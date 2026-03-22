@@ -1,0 +1,12 @@
+
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+src/components/layout/Sidebar.tsx(10,3): error TS6133: 'CloudUpload' is declared but its value is never read.
+src/pages/admin/AdminDashboard.tsx(32,9): error TS6133: 'totalObligation' is declared but its value is never read.
+src/pages/admin/budget/PPAPage.tsx(4,15): error TS6133: 'ScrollText' is declared but its value is never read.
+src/pages/admin/upload/UploadCenterPage.tsx(2,46): error TS6133: 'Clock' is declared but its value is never read.
+src/pages/admin/upload/UploadCenterPage.tsx(14,41): error TS6133: 'template' is declared but its value is never read.
+src/pages/user/requests/MyRequestsPage.tsx(2,64): error TS6133: 'Plus' is declared but its value is never read.
+src/pages/user/requests/MyRequestsPage.tsx(7,1): error TS6133: 'Button' is declared but its value is never read.
+src/pages/user/UserDashboard.tsx(35,9): error TS6133: 'totalObligation' is declared but its value is never read.

@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Clock, Car, CalendarOff, PenLine, ShoppingBag, Inbox, Plus } from 'lucide-react';
+import { Clock, Car, CalendarOff, PenLine, ShoppingBag, Inbox } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge, TypeBadge } from '@/components/shared/StatusBadge';
 import { MOCK_REQUESTS } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import type { RequestType } from '@/types';
 

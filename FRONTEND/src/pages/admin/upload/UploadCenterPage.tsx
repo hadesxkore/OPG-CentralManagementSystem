@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CloudUpload, FileText, CheckCircle, Clock, Trash2, Download } from 'lucide-react';
+import { CloudUpload, FileText, CheckCircle, Trash2, Download } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ const uploadHistory = [
   { id: 3, file: 'Utilization_Q1_2025.xlsx', type: 'Utilization', uploadedBy: 'Maria Santos', date: '2025-03-10', status: 'Processed', records: 8 },
 ];
 
-function DropZone({ label, description, template }: { label: string; description: string; template: string }) {
+function DropZone({ label, description }: { label: string; description: string; template?: string }) {
   const [dragging, setDragging] = useState(false);
 
   return (

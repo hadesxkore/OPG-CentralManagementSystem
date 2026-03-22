@@ -32,7 +32,6 @@ export default function UserDashboard() {
   const dataRows = ppaRecords.filter(r => !r.isHeader);
   const totalAppropriation    = dataRows.reduce((s, r) => s + (r.appropriation            ?? 0), 0);
   const totalAllotment        = dataRows.reduce((s, r) => s + (r.allotment                ?? 0), 0);
-  const totalObligation       = dataRows.reduce((s, r) => s + (r.obligation               ?? 0), 0);
   const totalBalOfAppropriation = dataRows.reduce((s, r) => s + (r.balanceOfAppropriation ?? 0), 0);
   const avgUtilization        = dataRows.length > 0
     ? dataRows.reduce((s, r) => s + (r.utilizationRate ?? 0), 0) / dataRows.length

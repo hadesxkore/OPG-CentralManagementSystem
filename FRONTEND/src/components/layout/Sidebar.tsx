@@ -7,7 +7,6 @@ import {
   ScrollText,
   Scale,
   TrendingUp,
-  CloudUpload,
   LayoutList,
   ClipboardList,
   Inbox,

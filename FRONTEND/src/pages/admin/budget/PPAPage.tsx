@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import * as XLSX from 'xlsx-js-style';
 import {
-  LayoutList, ScrollText, Download, FileUp, Search, X, CheckCircle2, ChevronUp, ChevronDown, Edit2, Trash2
+  LayoutList, Download, FileUp, Search, X, CheckCircle2, ChevronUp, ChevronDown, Edit2, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sileo } from 'sileo';
