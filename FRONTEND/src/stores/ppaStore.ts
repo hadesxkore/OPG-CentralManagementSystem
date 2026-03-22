@@ -1,0 +1,52 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { PPARecord } from '@/types';
+
+interface PPAState {
+  importedRecords: PPARecord[];
+  importedFileName: string;
+  isImported: boolean;
+  setImportedData: (records: PPARecord[], fileName: string) => void;
+  updateRecord: (id: string, patch: Partial<PPARecord>) => void;
+  clearImport: () => void;
+}
+
+export const usePPAStore = create<PPAState>()(
+  persist(
+    (set) => ({
+      importedRecords: [],
+      importedFileName: '',
+      isImported: false,
+
+      setImportedData: (records, fileName) =>
+        set({ importedRecords: records, importedFileName: fileName, isImported: true }),
+
+      // Update a single record and re-derive computed columns
+      updateRecord: (id, patch) =>
+        set((state) => ({
+          importedRecords: state.importedRecords.map((r) => {
+            if (r.id !== id) return r;
+            const updated = { ...r, ...patch };
+            if (!updated.isHeader) {
+              const bal_approp = updated.appropriation - updated.allotment;
+              const bal_allot  = updated.allotment     - updated.obligation;
+              const util_rate  = updated.appropriation > 0
+                ? (updated.obligation / updated.appropriation) * 100
+                : 0;
+              return {
+                ...updated,
+                balanceOfAppropriation: bal_approp,
+                balanceOfAllotment:     bal_allot,
+                utilizationRate:        util_rate,
+              };
+            }
+            return updated;
+          }),
+        })),
+
+      clearImport: () =>
+        set({ importedRecords: [], importedFileName: '', isImported: false }),
+    }),
+    { name: 'opg-ppa-store' }
+  )
+);
