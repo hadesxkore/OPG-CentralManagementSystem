@@ -21,13 +21,6 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
-const featuredStats = [
-  { label: 'Total Appropriation', value: '₱80.4M' },
-  { label: 'Active Offices', value: '8' },
-  { label: 'Pending Requests', value: '4' },
-  { label: 'Utilization Rate', value: '60.4%' },
-];
-
 export default function LoginPage() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
@@ -120,21 +113,7 @@ export default function LoginPage() {
 
         {/* Stats grid */}
         <div className="relative z-10">
-          <div className="grid grid-cols-2 gap-3 mb-8">
-            {featuredStats.map((stat, i) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 + i * 0.07 }}
-                className="rounded-xl p-4"
-                style={{ background: 'rgba(255,255,255,0.08)' }}
-              >
-                <p className="text-blue-200/60 text-xs mb-1">{stat.label}</p>
-                <p className="text-white text-xl font-bold font-mono">{stat.value}</p>
-              </motion.div>
-            ))}
-          </div>
+
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <p className="text-blue-200/60 text-xs">Secured · Government Compliant · Data Privacy Act 2012</p>
