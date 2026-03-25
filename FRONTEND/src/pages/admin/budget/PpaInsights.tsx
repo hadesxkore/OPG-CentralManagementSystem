@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowUpRight, ArrowDownRight, Minus, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Minus, TrendingUp, Loader2 } from 'lucide-react';
 
 interface LocalPPARecord {
   fppCode: string;
@@ -46,6 +46,14 @@ const DiffBadge = ({ value, invertColors = false, isPercent = false }: { value: 
 
 export function PpaInsights({ oldRecords, newRecords }: InsightsProps) {
   const [filter, setFilter] = useState<'All' | 'Changed'>('Changed');
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsAnalyzing(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const insights = useMemo(() => {
     const oldFiltered = oldRecords.filter(r => !r.isHeader);
@@ -116,6 +124,23 @@ export function PpaInsights({ oldRecords, newRecords }: InsightsProps) {
   }, [oldRecords, newRecords]);
 
   const displayChanges = filter === 'Changed' ? insights.changes.filter(c => c.status !== 'Unchanged') : insights.changes;
+
+  if (isAnalyzing) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[400px] bg-slate-50/50 rounded-xl border border-slate-200 p-8 shadow-inner animate-in fade-in duration-500">
+        <div className="relative mb-6">
+          <div className="absolute inset-0 bg-blue-100 rounded-full blur-xl opacity-60 animate-pulse"></div>
+          <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center relative border border-blue-100/50">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          </div>
+        </div>
+        <h3 className="text-base font-bold text-slate-800 tracking-tight">AI Engine is Analyzing Data...</h3>
+        <p className="text-xs text-slate-500 mt-2 max-w-sm text-center leading-relaxed">
+          Processing historical logs and cross-referencing with the live active database to generate row-by-row comparative insights.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full space-y-4">
