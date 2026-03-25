@@ -1,9 +1,12 @@
-import { Scale } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Scale, Database } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { MOCK_BUDGET_RECORDS, getBudgetSummaryFromRecords, formatPeso } from '@/data/mockData';
-import { useBudgetStore } from '@/stores/budgetStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatPeso } from '@/data/mockData';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { db } from '@/backend/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import type { PPARecord } from '@/types';
 
 function getUtilColor(rate: number) {
   if (rate >= 75) return { text: 'text-red-600',     bar: 'bg-red-500' };
@@ -13,15 +16,35 @@ function getUtilColor(rate: number) {
 }
 
 export default function BalancesPage() {
-  const { importedRecords, isImported } = useBudgetStore();
-  const records = isImported ? importedRecords : MOCK_BUDGET_RECORDS;
-  const { totalAppropriation, totalObligation, totalBalance, avgUtilization } = getBudgetSummaryFromRecords(records);
+  const [records, setRecords] = useState<PPARecord[]>([]);
+  const [isImported, setIsImported] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'finance', 'ppa_summary'), s => {
+      if (s.exists() && s.data().records) {
+        setRecords(s.data().records);
+        setIsImported(true);
+      } else {
+        setRecords([]);
+        setIsImported(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const dataRows = records.filter(r => !r.isHeader);
+  const totalAppropriation = dataRows.reduce((sum, r) => sum + (r.appropriation || 0), 0);
+  const totalObligation    = dataRows.reduce((sum, r) => sum + (r.obligation || 0), 0);
+  const totalBalance       = totalAppropriation - totalObligation;
+  const avgUtilization     = dataRows.length > 0 
+    ? dataRows.reduce((sum, r) => sum + (r.utilizationRate || 0), 0) / dataRows.length 
+    : 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Balances"
-        description="Available budget per office (Appropriation minus Obligation)"
+        description="Available budget per Program / Project / Activity (Appropriation minus Obligation)"
         icon={Scale}
       />
 
@@ -54,47 +77,62 @@ export default function BalancesPage() {
               style={{ width: `${Math.min(avgUtilization, 100)}%` }}
             />
           </div>
-          <p className="text-xs text-slate-400 mt-2">{records.length} offices · {isImported ? 'Imported data' : 'Mock data'}</p>
+          <p className="text-xs text-slate-400 mt-2">{dataRows.length} PPA entries · {isImported ? 'Live PPA Data' : 'No Data Available'}</p>
         </CardContent>
       </Card>
 
       {/* Office-by-office cards */}
       <Card className="shadow-sm border-slate-100">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Balance by Office</CardTitle>
+          <CardTitle className="text-base font-semibold">Balance by Program / Project / Activity</CardTitle>
+          <CardDescription className="text-xs">Based on latest PPA Summary sync</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {records.map(ob => {
-            const uc = getUtilColor(ob.utilization);
-            return (
-              <div key={ob.id} className="p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all">
-                <div className="flex items-start justify-between mb-3">
-                  <p className="text-xs font-semibold text-slate-800 leading-snug max-w-[80%]">{ob.office}</p>
-                  <span className={`text-sm font-bold font-mono ml-3 flex-shrink-0 ${uc.text}`}>{ob.utilization.toFixed(2)}%</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-3">
-                  <div
-                    className={`h-2 rounded-full transition-all duration-700 ${uc.bar}`}
-                    style={{ width: `${Math.min(ob.utilization, 100)}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Appropriation</p>
-                    <p className="text-xs font-mono font-bold text-slate-700">{formatPeso(ob.appropriation)}</p>
+          {dataRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+              <Database className="w-10 h-10 mb-3 opacity-30" />
+              <p className="text-sm font-medium">No balances to show</p>
+              <p className="text-xs mt-1">Please import PPA Summary data first.</p>
+            </div>
+          ) : (
+            dataRows.map(ob => {
+              const utilRate = ob.utilizationRate || 0;
+              const uc = getUtilColor(utilRate);
+              const bal = (ob.appropriation || 0) - (ob.obligation || 0);
+
+              return (
+                <div key={ob.id || Math.random()} className="p-4 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs font-mono text-blue-600 font-semibold mb-0.5">{ob.fppCode}</p>
+                      <p className="text-sm font-semibold text-slate-800 leading-snug max-w-[90%]">{ob.programProjectActivity}</p>
+                    </div>
+                    <span className={`text-sm font-bold font-mono ml-3 flex-shrink-0 ${uc.text}`}>{utilRate.toFixed(2)}%</span>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Obligation</p>
-                    <p className="text-xs font-mono font-bold text-violet-700">{formatPeso(ob.obligation)}</p>
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-3">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-700 ${uc.bar}`}
+                      style={{ width: `${Math.min(utilRate, 100)}%` }}
+                    />
                   </div>
-                  <div>
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Balance</p>
-                    <p className={cn('text-xs font-mono font-bold', ob.balance < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatPeso(ob.balance)}</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Appropriation</p>
+                      <p className="text-xs font-mono font-bold text-slate-700">{formatPeso(ob.appropriation || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Obligation</p>
+                      <p className="text-xs font-mono font-bold text-violet-700">{formatPeso(ob.obligation || 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider">Balance</p>
+                      <p className={cn('text-xs font-mono font-bold', bal < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatPeso(bal)}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { History, Search, RefreshCcw, Eye, FileSpreadsheet, ShieldCheck, Database, Calendar, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History, Search, RefreshCcw, Eye, FileSpreadsheet, ShieldCheck, Database, Calendar, X, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
+import { PpaInsights } from './PpaInsights';
 import { usePagination } from '@/hooks/usePagination';
 import { sileo } from 'sileo';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -170,18 +171,27 @@ export default function BudgetTrashPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'ppa_summary' | 'obligations' | 'statements'>('ppa_summary');
   const [search, setSearch] = useState('');
+  const [livePpaRecords, setLivePpaRecords] = useState<any[]>([]);
+  const [showInsights, setShowInsights] = useState(false);
   
   // Modal state
   const [viewItem, setViewItem] = useState<ArchivedItem | null>(null);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'budget_trash'), (snap) => {
+    const unsubTrash = onSnapshot(collection(db, 'budget_trash'), (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ArchivedItem))
         .sort((a, b) => new Date(b.clearedAt).getTime() - new Date(a.clearedAt).getTime());
       setArchives(items);
       setIsLoading(false);
     });
-    return () => unsub();
+    
+    const unsubPPA = onSnapshot(doc(db, 'finance', 'ppa_summary'), (snap) => {
+       if(snap.exists() && snap.data().records) {
+          setLivePpaRecords(snap.data().records);
+       }
+    });
+
+    return () => { unsubTrash(); unsubPPA(); };
   }, []);
 
   const handleRestore = (item: ArchivedItem) => {
@@ -281,7 +291,7 @@ export default function BudgetTrashPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {currentRecords.map(item => (
-                       <tr key={item.id} className="hover:bg-slate-50/60 transition-colors group cursor-pointer" onClick={() => setViewItem(item)}>
+                       <tr key={item.id} className="hover:bg-slate-50/60 transition-colors group cursor-pointer" onClick={() => { setViewItem(item); setShowInsights(false); }}>
                           <td className="py-3 px-5">
                              <div className="flex items-center gap-2.5">
                                 <div className="p-1.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
@@ -311,9 +321,9 @@ export default function BudgetTrashPage() {
                           </td>
                           <td className="py-3 px-5 text-right">
                              <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-                                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[11px] font-bold text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-800" onClick={() => setViewItem(item)}>
-                                   <Eye className="w-3.5 h-3.5" /> View Data
-                                </Button>
+                                 <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[11px] font-bold text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100 hover:text-blue-800" onClick={() => { setViewItem(item); setShowInsights(false); }}>
+                                    <Eye className="w-3.5 h-3.5" /> View Data
+                                 </Button>
                                 {isAdmin && (
                                    <Button size="sm" className="h-8 gap-1.5 text-[11px] font-bold shadow-sm" onClick={() => handleRestore(item)}>
                                       <RefreshCcw className="w-3.5 h-3.5" /> Restore
@@ -347,17 +357,26 @@ export default function BudgetTrashPage() {
                 </CardTitle>
                 <div className="flex flex-wrap items-center gap-2">
                    {isAdmin && (
-                      <Button size="sm" className="gap-2 h-9 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={() => { handleRestore(viewItem); setViewItem(null); }}>
+                      <Button size="sm" className="gap-2 h-9 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm" onClick={() => { handleRestore(viewItem); setViewItem(null); setShowInsights(false); }}>
                          <RefreshCcw className="w-4 h-4" /> Restore Module
                       </Button>
                    )}
-                   <Button size="sm" variant="outline" className="gap-2 h-9 text-xs font-bold text-slate-600 shadow-none border-slate-300" onClick={() => setViewItem(null)}>
+                   {viewItem.type === 'ppa_summary' && (
+                     <Button size="sm" className="gap-2 h-9 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-sm" onClick={() => setShowInsights(!showInsights)}>
+                       <BarChart3 className="w-4 h-4" /> {showInsights ? 'View Raw Data' : 'AI Data Insights'}
+                     </Button>
+                   )}
+                   <Button size="sm" variant="outline" className="gap-2 h-9 text-xs font-bold text-slate-600 shadow-none border-slate-300" onClick={() => { setViewItem(null); setShowInsights(false); }}>
                       <X className="w-4 h-4" /> Close
                    </Button>
                 </div>
               </CardHeader>
               <CardContent className="flex-1 p-4 bg-slate-50/50 overflow-hidden flex flex-col min-h-0">
-                <DynamicTable data={viewItem.records} type={viewItem.type} />
+                {showInsights && viewItem.type === 'ppa_summary' ? (
+                  <PpaInsights oldRecords={viewItem.records} newRecords={livePpaRecords} />
+                ) : (
+                  <DynamicTable data={viewItem.records} type={viewItem.type} />
+                )}
               </CardContent>
             </Card>
           </motion.div>
