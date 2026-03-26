@@ -64,6 +64,7 @@ export interface PPARecord {
   balanceOfAppropriation: number;   // appropriation - allotment
   balanceOfAllotment: number;       // allotment - obligation
   utilizationRate: number;          // obligation / allotment × 100
+  sourceGroup?: string;             // to uniquely map files to fund types (e.g. "20%")
   isHeader?: boolean;
 }
 
@@ -184,4 +185,24 @@ export interface ChartDataPoint {
   Total: number;
   Obligations: number;
   Balance: number;
+}
+
+// ============================================================
+// BUDGET RELEASE / UTILIZATION TRANSACTIONS
+// ============================================================
+export type FundType = 'PS' | 'MOOE' | 'CO';
+
+export interface BudgetRelease {
+  id: string;
+  fundType: FundType;               // PS | MOOE | CO
+  fppCode: string;                  // FPP Code from PPA Summary
+  department: string;               // Office/Department
+  amount: number;                   // Amount released/utilized
+  accountCode: string;              // GL / Account Code
+  purpose: string;                  // Description / purpose
+  payee?: string;                   // Payee name
+  submittedBy: string;              // User name
+  submittedById: string;            // User UID
+  office: string;                   // User office
+  createdAt: string;                // ISO timestamp
 }

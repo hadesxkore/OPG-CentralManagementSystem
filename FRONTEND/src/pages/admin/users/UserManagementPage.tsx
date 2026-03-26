@@ -11,6 +11,40 @@ import { sileo } from 'sileo';
 import { db, secondaryAuth } from '@/backend/firebase';
 import { collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import type { StatementRecord } from '@/types';
+
+// ── Same fund-section derivation as BudgetReleasePage ─────────────────────
+interface FundSection { key: string; shortLabel: string; }
+
+function deriveStatementFunds(records: StatementRecord[]): FundSection[] {
+  const sections: FundSection[] = [];
+  let currentIdx = -1;
+  for (const r of records) {
+    if (r.isHeader) {
+      const label = (r.expensesClassification ?? '').trim();
+      if (!label) continue;
+      const parts = label.split('.');
+      const shortLabel = parts.length > 1 ? parts.slice(1).join('.').trim() : label;
+      sections.push({ key: label, shortLabel });
+      currentIdx = sections.length - 1;
+    } else if (currentIdx >= 0) {
+      // just traverse, no balance needed here
+    }
+  }
+  // Fallback: no isHeader rows → unique expensesClassification values
+  if (sections.length === 0) {
+    const seen = new Set<string>();
+    for (const r of records) {
+      const cls = (r.expensesClassification ?? '').trim();
+      if (cls && !seen.has(cls)) {
+        seen.add(cls);
+        const parts = cls.split('.');
+        sections.push({ key: cls, shortLabel: parts.length > 1 ? parts.slice(1).join('.').trim() : cls });
+      }
+    }
+  }
+  return sections;
+}
 
 type AppUser = {
   id: string;
@@ -22,6 +56,7 @@ type AppUser = {
   role: 'admin' | 'user' | 'pops';
   destination: 'Central Users' | 'POPS';
   status: 'Active' | 'Inactive';
+  allowedFundTypes?: string[];   // e.g. ['MOOE'] or null = all allowed
 };
 
 export default function UserManagementPage() {
@@ -40,6 +75,27 @@ export default function UserManagementPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [roleDest, setRoleDest] = useState<'admin' | 'user' | 'pops'>('user');
+  const [allowedFundTypes, setAllowedFundTypes] = useState<string[]>([]);
+
+  // Live fund sections from Statement of Appropriations
+  const [statementRecords, setStatementRecords] = useState<StatementRecord[]>([]);
+  const fundSections: FundSection[] = deriveStatementFunds(statementRecords);
+
+  const toggleFundType = (key: string) => {
+    setAllowedFundTypes(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  useEffect(() => {
+    // Fetch statement fund sections live
+    const unsubStatement = onSnapshot(doc(db, 'finance', 'statement'), snap => {
+      setStatementRecords(
+        snap.exists() && snap.data().records ? snap.data().records as StatementRecord[] : []
+      );
+    });
+    return () => unsubStatement();
+  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'users'), (snap) => {
@@ -56,6 +112,7 @@ export default function UserManagementPage() {
     setEditDocId(null);
     setFullName(''); setOffice(''); setUsername(''); setEmail('');
     setPassword(''); setConfirmPassword(''); setRoleDest('user');
+    setAllowedFundTypes([]);
   };
 
   const handleSaveUser = () => {
@@ -82,7 +139,9 @@ export default function UserManagementPage() {
             username: username.toLowerCase(),
             office: office,
             role: roleDest,
-            destination: destination
+            destination: destination,
+            // null means 'all fund types allowed'; empty array means 'none assigned'
+            allowedFundTypes: allowedFundTypes.length > 0 ? allowedFundTypes : null,
           });
           resolve(true);
         } else {
@@ -132,6 +191,7 @@ export default function UserManagementPage() {
     setUsername(u.username);
     setEmail(u.email);
     setRoleDest(u.role);
+    setAllowedFundTypes(u.allowedFundTypes ?? []);
     setModalOpen(true);
   };
 
@@ -259,7 +319,7 @@ export default function UserManagementPage() {
 
       {/* ── ADD USER MODAL ──────────────────────────────────────────── */}
       <Dialog open={isModalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+        <DialogContent className="sm:max-w-3xl p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 border-b">
             <DialogTitle className="text-white font-bold flex items-center gap-2 text-base">
               {editDocId ? <Edit2 className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
@@ -267,55 +327,97 @@ export default function UserManagementPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="px-6 py-5 flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5 col-span-2">
-                <label className="text-xs font-semibold text-slate-600">Full Name</label>
-                <Input className="h-9 text-sm" placeholder="Juan Dela Cruz" value={fullName} onChange={e => setFullName(e.target.value)} />
+          <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-6 md:divide-x md:divide-slate-200">
+            {/* Left Column: User Info Fields */}
+            <div className="flex flex-col gap-4 pr-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-xs font-semibold text-slate-600">Full Name</label>
+                  <Input className="h-9 text-sm" placeholder="Juan Dela Cruz" value={fullName} onChange={e => setFullName(e.target.value)} />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <label className="text-xs font-semibold text-slate-600">Office Dept.</label>
+                  <Input className="h-9 text-sm" placeholder="e.g. Budget Office" value={office} onChange={e => setOffice(e.target.value)} />
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-xs font-semibold text-slate-600">Username</label>
+                  <Input className="h-9 text-sm" placeholder="e.g. juan.dela" value={username} onChange={e => setUsername(e.target.value.toLowerCase())} />
+                </div>
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="text-xs font-semibold text-slate-600">Email Address {editDocId && '(Locked)'}</label>
+                  <Input disabled={!!editDocId} type="email" className={`h-9 text-sm ${editDocId ? 'bg-slate-100/50 cursor-not-allowed text-slate-400' : ''}`} placeholder="juan@opg.gov.ph" value={email} onChange={e => setEmail(e.target.value.toLowerCase())} />
+                </div>
               </div>
-              <div className="space-y-1.5 col-span-2">
-                <label className="text-xs font-semibold text-slate-600">Office Dept.</label>
-                <Input className="h-9 text-sm" placeholder="e.g. Budget Office" value={office} onChange={e => setOffice(e.target.value)} />
-              </div>
-              <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-xs font-semibold text-slate-600">Username</label>
-                <Input className="h-9 text-sm" placeholder="e.g. juan.dela" value={username} onChange={e => setUsername(e.target.value.toLowerCase())} />
-              </div>
-              <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                <label className="text-xs font-semibold text-slate-600">Email Address {editDocId && '(Locked)'}</label>
-                <Input disabled={!!editDocId} type="email" className={`h-9 text-sm ${editDocId ? 'bg-slate-100/50 cursor-not-allowed text-slate-400' : ''}`} placeholder="juan@opg.gov.ph" value={email} onChange={e => setEmail(e.target.value.toLowerCase())} />
-              </div>
+
+              {!editDocId && (
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600">Password</label>
+                    <Input type="password" placeholder="••••••••" className="h-9 text-sm" value={password} onChange={e => setPassword(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600">Confirm Password</label>
+                    <Input type="password" placeholder="••••••••" className="h-9 text-sm" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
 
-            {!editDocId && (
-              <div className="grid grid-cols-2 gap-4 pt-1">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600">Password</label>
-                  <Input type="password" placeholder="••••••••" className="h-9 text-sm" value={password} onChange={e => setPassword(e.target.value)} />
+            {/* Right Column: Role & Fund Type Access */}
+            <div className="flex flex-col gap-4 pl-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-600">Access Role & Destination</label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {(['admin', 'user', 'pops'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRoleDest(r)}
+                      className={`h-11 capitalize text-xs font-bold rounded-lg border-2 transition-all ${roleDest === r ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-100 hover:border-slate-200 text-slate-500'}`}
+                    >
+                      {r}
+                    </button>
+                  ))}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-600">Confirm Password</label>
-                  <Input type="password" placeholder="••••••••" className="h-9 text-sm" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} />
-                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Destinations inherently mapped. Admin/User maps to <strong className="text-blue-500">Central Users</strong>. POPS maps to <strong className="text-emerald-500">POPS</strong> exclusively.
+                </p>
               </div>
-            )}
 
-            <div className="space-y-1.5 pt-1">
-              <label className="text-xs font-semibold text-slate-600">Access Role & Destination</label>
-              <div className="grid grid-cols-3 gap-2 mt-1">
-                {(['admin', 'user', 'pops'] as const).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setRoleDest(r)}
-                    className={`h-11 capitalize text-xs font-bold rounded-lg border-2 transition-all ${roleDest === r ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-100 hover:border-slate-200 text-slate-500'}`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Destinations inherently mapped. Admin/User maps to <strong className="text-blue-500">Central Users</strong>. POPS maps to <strong className="text-emerald-500">POPS</strong> exclusively.
-              </p>
+              {/* Budget Release Access — fund type restriction (live from Statement) */}
+              {(editDocId && roleDest === 'user') && (
+                <div className="space-y-2 pt-1">
+                  <label className="text-xs font-semibold text-slate-600 block">Budget Release — Allowed Fund Types</label>
+                  <p className="text-[10px] text-slate-400">
+                    Based on the imported Statement of Appropriations. Leave all unchecked to allow all.
+                  </p>
+                  {fundSections.length === 0 ? (
+                    <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg">
+                      No Statement data imported yet. Import the Statement page first to see fund types.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 mt-1 max-h-40 overflow-y-auto pr-1">
+                      {fundSections.map(section => (
+                        <label key={section.key} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                          allowedFundTypes.includes(section.key)
+                            ? 'bg-blue-50 border-blue-200 text-blue-700'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 accent-blue-600 flex-shrink-0"
+                            checked={allowedFundTypes.includes(section.key)}
+                            onChange={() => toggleFundType(section.key)}
+                          />
+                          <span className="text-xs font-semibold">{section.shortLabel}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {allowedFundTypes.length === 0 && fundSections.length > 0 && (
+                    <p className="text-[10px] text-emerald-600 font-medium">✓ No restriction — user can access all fund types.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

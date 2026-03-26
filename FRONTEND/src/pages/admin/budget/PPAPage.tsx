@@ -1,7 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import * as XLSX from 'xlsx-js-style';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
-  LayoutList, Download, FileUp, Search, X, CheckCircle2, ChevronUp, ChevronDown, Edit2, Trash2
+  LayoutList, Download, FileUp, Search, X, CheckCircle2, ChevronUp, ChevronDown, Edit2, Trash2, Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { sileo } from 'sileo';
@@ -63,6 +65,8 @@ function parsePPAExcel(file: File): Promise<PPARecord[]> {
         const num = (v: unknown) =>
           parseFloat(String(v ?? 0).replace(/[,%₱\s]/g, '').trim()) || 0;
 
+        const groupName = file.name.replace(/\.[^/.]+$/, '').trim();
+
         const records: PPARecord[] = rows
           .slice(headerIdx + 1)
           .filter(row => row[fppCol] || row[ppaCol])
@@ -71,6 +75,29 @@ function parsePPAExcel(file: File): Promise<PPARecord[]> {
             const appropriation = num(row[appropCol]);
             const allotment     = num(row[allotCol]);
             const obligation    = num(row[obligCol]);
+
+            const ppaText = String(row[ppaCol] ?? '').trim();
+            const fppText = String(row[fppCol]  ?? '').trim();
+
+            // Detect section header: has label text but all numeric columns are zero/empty
+            const isHeader = !fppText && ppaText.length > 0 &&
+              appropriation === 0 && allotment === 0 && obligation === 0;
+
+            if (isHeader) {
+              return {
+                id: `header_${i}`,
+                fppCode: '',
+                programProjectActivity: ppaText,
+                appropriation: 0,
+                allotment: 0,
+                obligation: 0,
+                balanceOfAppropriation: 0,
+                balanceOfAllotment: 0,
+                utilizationRate: 0,
+                sourceGroup: groupName,
+                isHeader: true,
+              };
+            }
 
             const balanceOfAppropriation = bAppropCol >= 0 && num(row[bAppropCol]) !== 0
               ? num(row[bAppropCol])
@@ -87,14 +114,15 @@ function parsePPAExcel(file: File): Promise<PPARecord[]> {
 
             return {
               id: `ppa_${i}`,
-              fppCode:                String(row[fppCol]  ?? '').trim(),
-              programProjectActivity: String(row[ppaCol]  ?? '').trim(),
+              fppCode:                fppText,
+              programProjectActivity: ppaText,
               appropriation,
               allotment,
               obligation,
               balanceOfAppropriation,
               balanceOfAllotment,
               utilizationRate,
+              sourceGroup: groupName,
             };
           });
 
@@ -123,10 +151,14 @@ export default function PPAPage() {
   const { importedRecords, importedFileName, isImported, setImportedData, clearImport } = usePPAStore();
 
   const [search,    setSearch]    = useState('');
+  const [sectionFilter, setSectionFilter] = useState<string>('All');
   const [importing, setImporting] = useState(false);
   const [isConfirmClear, setConfirmClear] = useState(false);
   const [sortCol,   setSortCol]   = useState<keyof PPARecord | null>(null);
   const [sortAsc,   setSortAsc]   = useState(true);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printSearch, setPrintSearch] = useState('');
+  const [printSelectedIds, setPrintSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef              = useRef<HTMLInputElement>(null);
 
   // Firestore Sync Listener
@@ -152,7 +184,28 @@ export default function PPAPage() {
   const baseRecords = isImported ? importedRecords : [];
   const totals = getPPATotal(isImported ? importedRecords : []);
 
-  const filtered = baseRecords.filter(r =>
+  // Dynamically detect section groups from isHeader rows in the parsed data
+  const detectedSections = baseRecords
+    .filter(r => r.isHeader)
+    .map(r => ({ key: r.programProjectActivity, label: r.programProjectActivity }));
+
+  const SECTION_FILTERS = [
+    { key: 'All', label: 'All' },
+    ...detectedSections,
+  ];
+
+  // Filter by section: slice records between matching header and next header
+  const sectionFiltered = (() => {
+    if (sectionFilter === 'All') return baseRecords;
+    const headerIdx = baseRecords.findIndex(
+      r => r.isHeader && r.programProjectActivity === sectionFilter
+    );
+    if (headerIdx === -1) return baseRecords;
+    const nextHeaderIdx = baseRecords.findIndex((r, i) => i > headerIdx && r.isHeader);
+    return baseRecords.slice(headerIdx, nextHeaderIdx === -1 ? undefined : nextHeaderIdx);
+  })();
+
+  const filtered = sectionFiltered.filter(r =>
     r.programProjectActivity.toLowerCase().includes(search.toLowerCase()) ||
     r.fppCode.toLowerCase().includes(search.toLowerCase())
   );
@@ -238,6 +291,13 @@ export default function PPAPage() {
          const records = await parsePPAExcel(file);
          if (records.length === 0) throw new Error('No valid rows found.');
          
+         const groupName = file.name.replace(/\.[^/.]+$/, '').trim();
+         
+         // In a multi-file PPA database system, we filter out ONLY the old records belonging to this specific file group,
+         // allowing MOOE.xlsx and 20%.xlsx to coexist instead of wiping each other out!
+         const otherExistingRecords = baseRecords ? baseRecords.filter(r => r.sourceGroup !== groupName) : [];
+         const mergedRecords = [...otherExistingRecords, ...records];
+
          // Auto-Archive existing data if present
          if (baseRecords && baseRecords.length > 0) {
             await setDoc(doc(collection(db, 'budget_trash')), {
@@ -252,8 +312,8 @@ export default function PPAPage() {
          }
 
          await setDoc(doc(db, 'finance', 'ppa_summary'), {
-            records,
-            fileName: file.name,
+            records: mergedRecords,
+            fileName: 'Multiple Source DB',
             updatedAt: new Date().toISOString()
          });
 
@@ -459,6 +519,86 @@ export default function PPAPage() {
     sileo.success({ title: 'Export ready', description: `${fn} has been downloaded` });
   };
 
+  const printFiltered = baseRecords.filter(r => !r.isHeader).filter(r => 
+     r.programProjectActivity.toLowerCase().includes(printSearch.toLowerCase()) ||
+     r.fppCode.toLowerCase().includes(printSearch.toLowerCase())
+  );
+
+  const togglePrintSelection = (id: string) => {
+    setPrintSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handlePrintSelected = () => {
+    if (printSelectedIds.size === 0) {
+      return sileo.error({ title: 'Select PPAs to print' });
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'legal' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(30, 58, 138);
+    doc.text("SUMMARY OF PROGRAM / PROJECT / ACTIVITY (PPA)", 40, 40);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated on: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, 55);
+
+    const headers = [[
+      'FPP CODE',
+      'PROGRAM / PROJECT / ACTIVITY',
+      'APPROPRIATION',
+      'ALLOTMENT',
+      'OBLIGATION',
+      'BALANCE OF APPROPRIATION',
+      'BALANCE OF ALLOTMENT',
+      'UTIL RATE'
+    ]];
+
+    const formatPdfNum = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const printRows = baseRecords
+       .filter(r => !r.isHeader && printSelectedIds.has(r.id))
+       .map(r => [
+          r.fppCode,
+          r.programProjectActivity,
+          formatPdfNum(r.appropriation),
+          formatPdfNum(r.allotment),
+          formatPdfNum(r.obligation),
+          formatPdfNum(r.balanceOfAppropriation),
+          formatPdfNum(r.balanceOfAllotment),
+          r.utilizationRate.toFixed(2) + '%'
+       ]);
+
+    autoTable(doc, {
+      startY: 70,
+      head: headers,
+      body: printRows,
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 4, textColor: [50, 50, 50], lineColor: [220, 220, 220], lineWidth: 0.5 },
+      headStyles: { fillColor: [30, 58, 138], textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 260 },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right' },
+        7: { halign: 'right' },
+      },
+      margin: { left: 40, right: 40 }
+    });
+
+    const pdfURL = doc.output('bloburl');
+    window.open(pdfURL, '_blank');
+    setPrintModalOpen(false);
+  };
+
   // ── Sortable TH helper ───────────────────────────────────────────────
   const SortTh = ({ col, label, right = false, wide = false }: {
     col: keyof PPARecord; label: string; right?: boolean; wide?: boolean;
@@ -494,6 +634,9 @@ export default function PPAPage() {
         icon={LayoutList}
         actions={
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="gap-2 text-xs h-8" onClick={() => setPrintModalOpen(true)}>
+              <Printer className="w-3.5 h-3.5" /> Print
+            </Button>
             <Button variant="outline" size="sm" className="gap-2 text-xs h-8" onClick={handleExport}>
               <Download className="w-3.5 h-3.5" /> Export Excel
             </Button>
@@ -572,23 +715,45 @@ export default function PPAPage() {
       {/* Table */}
       <Card className="shadow-sm border-slate-100 flex flex-col min-h-[75vh]">
         <CardHeader className="pb-3 flex-shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <CardTitle className="text-base font-semibold flex-1">
-              PPA Records
-              <span className="ml-2 text-xs font-normal text-slate-400">
-                {dataCount} programs/projects
-                {isImported && <span className="ml-1 text-emerald-600">· Imported</span>}
-              </span>
-            </CardTitle>
-            <div className="relative sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <Input
-                placeholder="Search by FPP code or project name…"
-                className="pl-9 h-8 text-xs"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <CardTitle className="text-base font-semibold flex-1">
+                PPA Records
+                <span className="ml-2 text-xs font-normal text-slate-400">
+                  {dataCount} programs/projects
+                  {isImported && <span className="ml-1 text-emerald-600">· Imported</span>}
+                </span>
+              </CardTitle>
+              <div className="relative sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  placeholder="Search by FPP code or project name…"
+                  className="pl-9 h-8 text-xs"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
             </div>
+
+            {/* Section Filter Pills — shown only if headers detected in Excel */}
+            {isImported && SECTION_FILTERS.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Filter by Section:</span>
+                {SECTION_FILTERS.map(sec => (
+                  <button
+                    key={sec.key}
+                    onClick={() => { setSectionFilter(sec.key); goTo(1); }}
+                    className={`px-3 py-1 text-[11px] font-semibold rounded-full border transition-all ${
+                      sectionFilter === sec.key
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-blue-400 hover:text-blue-600'
+                    }`}
+                  >
+                    {sec.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -883,6 +1048,97 @@ export default function PPAPage() {
             <Button onClick={confirmClearData} className="h-9 text-xs font-bold text-white px-6 bg-red-600 hover:bg-red-700">
               Yes, Move to Trash
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* ── PRINT SELECTION MODAL ────────────────────────────────────── */}
+      <Dialog open={printModalOpen} onOpenChange={(v) => { setPrintModalOpen(v); if(!v) setPrintSelectedIds(new Set()); }}>
+        <DialogContent className="sm:max-w-3xl p-0 overflow-hidden rounded-lg shadow-2xl">
+          <DialogHeader className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex flex-row items-center justify-between">
+            <div>
+               <DialogTitle className="text-blue-800 font-bold flex items-center gap-2 text-base">
+                 <Printer className="w-5 h-5 text-blue-600" /> Print Summary Report
+               </DialogTitle>
+               <p className="text-blue-600 text-[11px] mt-1">Select the specific FPP and PPA items below that you wish to include in your formal printout.</p>
+            </div>
+          </DialogHeader>
+          <div className="px-6 py-4 space-y-4">
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  className="pl-9 h-10 text-[13px] border-slate-200"
+                  placeholder="Search to filter FPPs or Projects..."
+                  value={printSearch}
+                  onChange={e => setPrintSearch(e.target.value)}
+                />
+              </div>
+              <Button
+                 variant="secondary"
+                 className="h-10 text-xs px-5 border border-slate-200 bg-white"
+                 onClick={() => {
+                    if (printSelectedIds.size === printFiltered.length && printFiltered.length > 0) {
+                      setPrintSelectedIds(new Set());
+                    } else {
+                      setPrintSelectedIds(new Set(printFiltered.map(r => r.id)));
+                    }
+                 }}
+              >
+                 {printSelectedIds.size === printFiltered.length && printFiltered.length > 0 
+                   ? 'Deselect View' 
+                   : 'Select All in View'}
+              </Button>
+            </div>
+            
+            <div className="flex bg-slate-100 text-[11px] font-bold text-slate-600 uppercase tracking-wider py-2 px-3 rounded-none border-y border-slate-200 gap-3">
+               <div className="w-8 shrink-0 text-center">Sel</div>
+               <div className="w-24 shrink-0">FPP Code</div>
+               <div className="flex-1">PPA Description</div>
+            </div>
+            <div className="max-h-[350px] overflow-y-auto space-y-0 pb-2 divide-y divide-slate-100 pr-1">
+              {printFiltered.length === 0 ? (
+                 <div className="text-center py-6 text-slate-400 text-sm">No items found matching your filter.</div>
+              ) : (
+                printFiltered.map(ppa => {
+                   const isSel = printSelectedIds.has(ppa.id);
+                   return (
+                     <div 
+                       key={ppa.id} 
+                       className={`flex items-start gap-3 py-2 px-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors ${isSel ? 'bg-blue-50/50' : ''}`}
+                       onClick={() => togglePrintSelection(ppa.id)}
+                     >
+                       <div className="w-8 shrink-0 flex justify-center pt-0.5">
+                         <input 
+                           type="checkbox" 
+                           checked={isSel} 
+                           onChange={() => {}} 
+                           className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-600"
+                         />
+                       </div>
+                       <div className="w-24 shrink-0 font-mono text-[11px] font-semibold text-slate-700">{ppa.fppCode}</div>
+                       <div className="flex-1 text-[12px] text-slate-600 font-medium leading-tight pr-2">{ppa.programProjectActivity}</div>
+                     </div>
+                   );
+                })
+              )}
+            </div>
+          </div>
+          <DialogFooter className="px-6 py-4 bg-slate-50 border-t flex items-center justify-between">
+            <div className="text-xs text-slate-500 font-medium">
+               <span className="text-blue-600 font-bold">{printSelectedIds.size}</span> item(s) currently staged for printing
+            </div>
+            <div className="flex gap-2">
+               <Button variant="ghost" className="h-9 text-xs" onClick={() => setPrintModalOpen(false)}>Cancel</Button>
+               <Button 
+                  onClick={handlePrintSelected} 
+                  className="h-9 text-xs font-bold text-white px-8"
+                  style={{ background: '#1D4ED8' }}
+                  disabled={printSelectedIds.size === 0}
+               >
+                 Generate PDF Document
+               </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -15,6 +15,7 @@ import AdminUtilizationPage from '@/pages/admin/budget/UtilizationPage';
 import AdminStatementPage from '@/pages/admin/budget/StatementPage';
 import AdminPPAPage from '@/pages/admin/budget/PPAPage';
 import BudgetTrashPage from '@/pages/admin/budget/BudgetTrashPage';
+import BudgetReleasePage from '@/pages/admin/budget/BudgetReleasePage';
 import UploadCenterPage from '@/pages/admin/upload/UploadCenterPage';
 import RequestManagementPage from '@/pages/admin/requests/RequestManagementPage';
 import UserManagementPage from '@/pages/admin/users/UserManagementPage';
@@ -75,6 +76,7 @@ export const router = createBrowserRouter([
           { path: '/admin/budget/statement', element: <AdminStatementPage /> },
           { path: '/admin/budget/ppa', element: <AdminPPAPage /> },
           { path: '/admin/budget/trash', element: <BudgetTrashPage /> },
+          { path: '/admin/budget/releases', element: <BudgetReleasePage /> },
           { path: '/admin/upload', element: <UploadCenterPage /> },
           { path: '/admin/requests', element: <RequestManagementPage /> },
           { path: '/admin/requests/all', element: <RequestManagementPage /> },
@@ -106,6 +108,7 @@ export const router = createBrowserRouter([
           { path: '/user/budget/statement', element: <UserStatementPage /> },
           { path: '/user/budget/ppa', element: <UserPPAPage /> },
           { path: '/user/budget/trash', element: <BudgetTrashPage /> },
+          { path: '/user/budget/releases', element: <BudgetReleasePage /> },
           { path: '/user/profile', element: <ProfilePage /> },
           { path: '/user/*', element: <Navigate to="/user/dashboard" replace /> },
         ],
