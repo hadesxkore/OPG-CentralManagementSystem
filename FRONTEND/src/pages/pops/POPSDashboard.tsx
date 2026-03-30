@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Shield, TrendingUp, FileText, BarChart3 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -6,14 +7,20 @@ import { formatPeso } from '@/data/mockData';
 import { useNavigate } from 'react-router-dom';
 
 export default function POPSDashboard() {
-  const { records } = usePOPSStore();
+  const { records, subscribeAll } = usePOPSStore();
   const navigate = useNavigate();
+
+  // Subscribe to all offices live from Firestore
+  useEffect(() => {
+    const unsub = subscribeAll();
+    return unsub;
+  }, [subscribeAll]);
 
   // Aggregate stats across all offices
   const allRecords = Object.values(records).flat();
-  const totalPR = allRecords.reduce((s, r) => s + r.prAmount, 0);
-  const totalPD = allRecords.reduce((s, r) => s + r.pdAmount, 0);
-  const totalDV = allRecords.reduce((s, r) => s + r.dvAmount, 0);
+  const totalPR  = allRecords.reduce((s, r) => s + r.prAmount,       0);
+  const totalPD  = allRecords.reduce((s, r) => s + r.pdAmount,       0);
+  const totalDV  = allRecords.reduce((s, r) => s + r.dvAmount,       0);
   const totalBal = allRecords.reduce((s, r) => s + r.balanceSavings, 0);
 
   return (

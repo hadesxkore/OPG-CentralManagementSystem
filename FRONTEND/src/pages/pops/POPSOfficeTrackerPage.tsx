@@ -1,14 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Plus, Trash2, Search, Download, FileText,
   CalendarIcon, FileDigit, BookOpen, Receipt,
   Landmark, PiggyBank, StickyNote, DollarSign, Eye,
+  Printer, FileDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { sileo } from 'sileo';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,7 +33,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
 import { usePOPSStore, POPS_OFFICES, type POPSRecord } from '@/stores/popsStore';
 import { cn } from '@/lib/utils';
 
@@ -55,14 +57,22 @@ const emptyForm = () => ({
 export default function POPSOfficeTrackerPage() {
   const { officeKey } = useParams<{ officeKey: string }>();
   const office = POPS_OFFICES.find(o => o.key === officeKey) || POPS_OFFICES[0];
-  const { records, addRecord, deleteRecord } = usePOPSStore();
+  const { records, addRecord, deleteRecord, subscribeOffice } = usePOPSStore();
   const officeRecords: POPSRecord[] = records[office.key] || [];
+
+  // Live Firestore listener for this office
+  useEffect(() => {
+    if (!office.key) return;
+    const unsub = subscribeOffice(office.key);
+    return unsub;
+  }, [office.key, subscribeOffice]);
 
   const [search, setSearch]               = useState('');
   const [addOpen, setAddOpen]             = useState(false);
   const [calendarOpen, setCalendarOpen]   = useState(false);
   const [viewRecord, setViewRecord]       = useState<POPSRecord | null>(null);
   const [deleteTarget, setDeleteTarget]   = useState<POPSRecord | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [form, setForm]                   = useState(emptyForm());
 
   // ── Filter / totals ──────────────────────────────────────────────────────
@@ -86,13 +96,12 @@ export default function POPSOfficeTrackerPage() {
     setForm(prev => ({ ...prev, [field]: value }));
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.particulars.trim()) {
       sileo.error({ title: 'Required field', description: 'Please fill in the Particulars field.' });
       return;
     }
-    const record: POPSRecord = {
-      id: `pops_${Date.now()}`,
+    const record = {
       date: format(form.date, 'yyyy-MM-dd'),
       prNumber: form.prNumber.trim(),
       obrNumber: form.obrNumber.trim(),
@@ -102,17 +111,24 @@ export default function POPSOfficeTrackerPage() {
       dvAmount: num(form.dvAmount),
       balanceSavings: num(form.balanceSavings),
       remarks: form.remarks.trim(),
+      officeKey: office.key,
     };
-    addRecord(office.key, record);
-    sileo.success({ title: 'Entry saved!', description: `"${record.particulars}" added.` });
-    setAddOpen(false);
+    const savePromise = addRecord(office.key, record);
+    sileo.promise(savePromise, {
+      loading: { title: 'Saving entry...' },
+      success: () => { setAddOpen(false); return { title: 'Entry saved!', description: `"${record.particulars}" added.` }; },
+      error: (e) => ({ title: 'Save failed', description: String(e) }),
+    });
   };
 
   const confirmDelete = () => {
     if (!deleteTarget) return;
-    deleteRecord(office.key, deleteTarget.id);
-    sileo.info({ title: 'Deleted', description: 'Entry removed successfully.' });
-    setDeleteTarget(null);
+    const p = deleteRecord(office.key, deleteTarget.id);
+    sileo.promise(p, {
+      loading: { title: 'Deleting...' },
+      success: () => { setDeleteTarget(null); return { title: 'Deleted', description: 'Entry removed successfully.' }; },
+      error: (e) => ({ title: 'Delete failed', description: String(e) }),
+    });
   };
 
   const handleExport = () => {
@@ -134,6 +150,81 @@ export default function POPSOfficeTrackerPage() {
     sileo.success({ title: 'Exported', description: `${office.label} records downloaded.` });
   };
 
+  const handleGeneratePDF = () => {
+    try {
+      sileo.info({ title: 'Generating Report', description: 'Please wait...', duration: 2000 });
+      const doc = new jsPDF('landscape', 'pt', 'legal');
+      
+      // Header
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`POPS DIVISION - ${office.label} Tracker`, 40, 40);
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(office.fullName, 40, 55);
+      
+      doc.text(`Date Generated: ${format(new Date(), 'MMMM d, yyyy · hh:mm a')}`, 40, 70);
+      
+      // Table
+      const head = [['Date', 'PR#', 'OBR#', 'Particulars', 'PR Amount', 'P.D Amount', 'D.V Amount', 'Bal/Savings', 'Remarks']];
+      const body = filtered.map(r => [
+        r.date, 
+        r.prNumber || '—', 
+        r.obrNumber || '—', 
+        r.particulars,
+        r.prAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        r.pdAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        r.dvAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        r.balanceSavings.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        r.remarks || '—'
+      ]);
+      
+      // Total Row
+      body.push([
+        '', '', '', 'GRAND TOTAL',
+        totals.prAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        totals.pdAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        totals.dvAmount.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        totals.balanceSavings.toLocaleString('en-PH', {minimumFractionDigits: 2}),
+        ''
+      ]);
+
+      autoTable(doc, {
+        startY: 85,
+        head,
+        body,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 4, font: 'helvetica' },
+        headStyles: { fillColor: [29, 78, 216], textColor: [255, 255, 255], fontStyle: 'bold' },
+        footStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          3: { cellWidth: 200 }, // Particulars
+          4: { halign: 'right' },
+          5: { halign: 'right' },
+          6: { halign: 'right' },
+          7: { halign: 'right' }
+        },
+        willDrawCell: function(data: any) {
+          if (data.row.index === body.length - 1) { // Total Row Formatting
+            doc.setFillColor(30, 58, 138); 
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            if (data.column.index === 3) {
+              data.cell.styles.halign = 'right';
+            }
+          }
+        }
+      });
+      
+      const blob = doc.output('bloburl');
+      setPdfPreviewUrl(blob as any);
+    } catch (err: any) {
+      console.error(err);
+      sileo.error({ title: 'PDF Error', description: 'Failed to generate PDF report.' });
+    }
+  };
+
   return (
     <div className="space-y-5">
 
@@ -144,6 +235,9 @@ export default function POPSOfficeTrackerPage() {
         icon={FileText}
         actions={
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="gap-2 text-xs h-9 text-slate-700 hover:text-blue-700 hover:bg-blue-50 border-slate-200" onClick={handleGeneratePDF}>
+              <Printer className="w-4 h-4" /> Generate Report
+            </Button>
             <Button variant="outline" size="sm" className="gap-2 text-xs h-9" onClick={handleExport}>
               <Download className="w-4 h-4" /> Export Excel
             </Button>
@@ -235,7 +329,16 @@ export default function POPSOfficeTrackerPage() {
                       animate={{ opacity: 1 }}
                       className="hover:bg-blue-50/30 transition-colors group"
                     >
-                      <td className="py-3 px-3 font-mono text-slate-600 whitespace-nowrap text-xs">{row.date}</td>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-mono text-slate-600 text-xs">{row.date}</span>
+                          {row.createdAt && (
+                            <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                              {format(new Date(row.createdAt), 'hh:mm a')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-3 px-3 font-mono text-blue-700 font-semibold whitespace-nowrap text-xs">{row.prNumber || '—'}</td>
                       <td className="py-3 px-3 font-mono text-blue-700 font-semibold whitespace-nowrap text-xs">{row.obrNumber || '—'}</td>
                       <td className="py-3 px-3 text-slate-700 font-medium max-w-[220px] truncate" title={row.particulars}>{row.particulars}</td>
@@ -401,7 +504,7 @@ export default function POPSOfficeTrackerPage() {
 
       {/* ── VIEW RECORD MODAL ──────────────────────────────────────────────── */}
       <Dialog open={!!viewRecord} onOpenChange={() => setViewRecord(null)}>
-        <DialogContent className="max-w-lg w-full p-0 overflow-hidden gap-0">
+        <DialogContent className="max-w-3xl w-full p-0 overflow-hidden gap-0">
           <DialogHeader className="px-6 py-4 border-b bg-gradient-to-r from-slate-800 to-slate-700">
             <DialogTitle className="text-white text-base font-bold flex items-center gap-2">
               <Eye className="w-4 h-4" /> Record Details — {office.label}
@@ -412,54 +515,67 @@ export default function POPSOfficeTrackerPage() {
           </DialogHeader>
 
           {viewRecord && (
-            <div className="px-6 py-5 space-y-4">
-              {/* Key info */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Date',  value: viewRecord.date },
-                  { label: 'PR #',  value: viewRecord.prNumber  || '—' },
-                  { label: 'OBR #', value: viewRecord.obrNumber || '—' },
-                ].map(f => (
-                  <div key={f.label} className="bg-slate-50 rounded-xl p-3">
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{f.label}</p>
-                    <p className="text-sm font-semibold font-mono text-slate-700">{f.value}</p>
+            <div className="px-6 py-5 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                {/* ── LEFT COLUMN ── */}
+                <div className="space-y-4">
+                  {/* Key info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      { 
+                        label: 'Date',  
+                        value: viewRecord.createdAt 
+                          ? `${viewRecord.date} · ${format(new Date(viewRecord.createdAt), 'hh:mm a')}`
+                          : viewRecord.date 
+                      },
+                      { label: 'PR #',  value: viewRecord.prNumber  || '—' },
+                      { label: 'OBR #', value: viewRecord.obrNumber || '—' },
+                    ].map(f => (
+                      <div key={f.label} className="bg-slate-50 rounded-xl p-3">
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{f.label}</p>
+                        <p className="text-sm font-semibold font-mono text-slate-700">{f.value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
 
-              {/* Particulars */}
-              <div className="bg-blue-50 rounded-xl p-3">
-                <p className="text-[10px] text-blue-400 uppercase tracking-wider mb-1">Particulars</p>
-                <p className="text-sm font-medium text-slate-700 leading-relaxed">{viewRecord.particulars}</p>
-              </div>
+                  {/* Particulars */}
+                  <div className="bg-blue-50 rounded-xl p-3 shadow-sm border border-blue-100/50">
+                    <p className="text-[10px] text-blue-400 uppercase tracking-wider mb-1.5">Particulars</p>
+                    <p className="text-sm font-medium text-slate-700 leading-relaxed">{viewRecord.particulars}</p>
+                  </div>
+                </div>
 
-              <Separator />
-
-              {/* Amounts */}
-              <div>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-3">Financial Amounts</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { label: 'PR Amount',     value: viewRecord.prAmount,       color: 'text-blue-700',    bg: 'bg-blue-50' },
-                    { label: 'P.D Amount',    value: viewRecord.pdAmount,       color: 'text-violet-700',  bg: 'bg-violet-50' },
-                    { label: 'D.V Amount',    value: viewRecord.dvAmount,       color: 'text-cyan-700',    bg: 'bg-cyan-50' },
-                    { label: 'Bal./Savings',  value: viewRecord.balanceSavings, color: 'text-emerald-700', bg: 'bg-emerald-50' },
-                  ].map(f => (
-                    <div key={f.label} className={`${f.bg} rounded-xl p-3`}>
-                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{f.label}</p>
-                      <p className={`text-base font-bold font-mono ${f.color}`}>{peso(f.value)}</p>
+                {/* ── RIGHT COLUMN ── */}
+                <div className="space-y-4">
+                  {/* Amounts */}
+                  <div>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-2">Financial Amounts</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { label: 'PR Amount',     value: viewRecord.prAmount,       color: 'text-blue-700',    bg: 'bg-blue-50' },
+                        { label: 'P.D Amount',    value: viewRecord.pdAmount,       color: 'text-violet-700',  bg: 'bg-violet-50' },
+                        { label: 'D.V Amount',    value: viewRecord.dvAmount,       color: 'text-cyan-700',    bg: 'bg-cyan-50' },
+                        { label: 'Bal./Savings',  value: viewRecord.balanceSavings, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+                      ].map(f => (
+                        <div key={f.label} className={`${f.bg} rounded-xl p-3 shadow-sm border border-white/50`}>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{f.label}</p>
+                          <p className={`text-base font-bold font-mono ${f.color}`}>{peso(f.value)}</p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              {/* Remarks */}
-              {viewRecord.remarks && (
-                <div className="bg-amber-50 rounded-xl p-3">
-                  <p className="text-[10px] text-amber-500 uppercase tracking-wider mb-1">Remarks</p>
-                  <p className="text-sm text-slate-600">{viewRecord.remarks}</p>
+                  {/* Remarks */}
+                  {viewRecord.remarks && (
+                    <div className="bg-amber-50 rounded-xl p-3 shadow-sm border border-amber-100/50 mt-4">
+                      <p className="text-[10px] text-amber-500 uppercase tracking-wider mb-1.5">Remarks</p>
+                      <p className="text-sm text-slate-600">{viewRecord.remarks}</p>
+                    </div>
+                  )}
                 </div>
-              )}
+
+              </div>
             </div>
           )}
 
@@ -510,6 +626,52 @@ export default function POPSOfficeTrackerPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── PDF PREVIEW MODAL ──────────────────────────────────────────────── */}
+      <Dialog open={!!pdfPreviewUrl} onOpenChange={() => setPdfPreviewUrl(null)}>
+        <DialogContent className="max-w-5xl w-full p-0 overflow-hidden gap-0 h-[90vh] flex flex-col">
+          <DialogHeader className="px-6 py-4 border-b bg-white border-slate-100 flex-shrink-0 shadow-sm z-10">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-slate-800 text-base font-bold flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600" /> Report Preview — {office.label}
+                </DialogTitle>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  Review the generated PDF report before downloading or printing.
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-9 px-4 text-xs font-semibold" onClick={() => setPdfPreviewUrl(null)}>
+                  Close
+                </Button>
+                <Button size="sm" className="h-9 px-5 text-xs font-semibold text-white gap-2"
+                  style={{ background: '#1D4ED8' }} 
+                  onClick={() => {
+                    if (pdfPreviewUrl) {
+                      const link = document.createElement('a');
+                      link.href = pdfPreviewUrl;
+                      link.download = `${office.label}_Report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+                      link.click();
+                    }
+                  }}>
+                  <FileDown className="w-4 h-4" /> Download PDF
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 w-full bg-slate-100 p-2 sm:p-5 relative">
+            {pdfPreviewUrl && (
+              <iframe
+                src={pdfPreviewUrl}
+                className="w-full h-full rounded-xl bg-white shadow-sm border border-slate-200"
+                title="PDF Preview"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );

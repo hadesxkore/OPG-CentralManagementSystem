@@ -58,7 +58,9 @@ export function Header({ mobileMenuOpen, onMenuClick, onDesktopToggle }: HeaderP
   };
 
   const handleProfile = () => {
-    const path = user?.role === 'admin' ? '/admin/profile' : '/user/profile';
+    const path = user?.role === 'admin' ? '/admin/profile' 
+               : user?.role === 'pops'  ? '/pops/profile' 
+               : '/user/profile';
     navigate(path);
   };
 
@@ -171,7 +173,7 @@ export function Header({ mobileMenuOpen, onMenuClick, onDesktopToggle }: HeaderP
               <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
               <p className="text-xs text-slate-500 truncate">{user?.email}</p>
               <Badge variant="secondary" className="mt-1 text-[10px]">
-                {user?.role === 'admin' ? '⚙ Admin' : '👤 User'}
+                {user?.role === 'admin' ? '⚙ Admin' : user?.role === 'pops' ? '🛡️ POPS Division' : '👤 User'}
               </Badge>
             </div>
             <DropdownMenuItem className="gap-2 cursor-pointer" onClick={handleProfile}>

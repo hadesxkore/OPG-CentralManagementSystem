@@ -118,9 +118,11 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/pops/dashboard', element: <POPSDashboard /> },
-          { path: '/pops/office/:officeKey', element: <POPSOfficeTrackerPage /> },
-          { path: '/pops/*', element: <Navigate to="/pops/dashboard" replace /> },
+          { path: '/pops/dashboard',                element: <POPSDashboard /> },
+          { path: '/pops/office/:officeKey',        element: <POPSOfficeTrackerPage /> },
+          { path: '/pops/profile',                  element: <ProfilePage /> },
+          { path: '/pops/settings',                 element: <SettingsPage /> },
+          { path: '/pops/*',                        element: <Navigate to="/pops/dashboard" replace /> },
         ],
       },
     ],

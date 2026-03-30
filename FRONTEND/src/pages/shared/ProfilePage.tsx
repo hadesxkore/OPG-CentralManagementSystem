@@ -143,10 +143,13 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0 pb-1">
                 <h2 className="text-xl font-bold text-slate-900 truncate">{user?.name}</h2>
                 <p className="text-sm text-slate-500 truncate">{user?.position}</p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${user?.role === 'admin' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'}`}>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold 
+                    ${user?.role === 'admin' ? 'bg-violet-100 text-violet-700' 
+                    : user?.role === 'pops' ? 'bg-indigo-100 text-indigo-700' 
+                    : 'bg-blue-100 text-blue-700'}`}>
                     <Shield className="w-3 h-3" />
-                    {user?.role === 'admin' ? 'Administrator' : 'Standard User'}
+                    {user?.role === 'admin' ? 'Administrator' : user?.role === 'pops' ? 'POPS Division' : 'Standard User'}
                   </span>
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                     <CheckCircle2 className="w-3 h-3" /> Active
@@ -221,12 +224,20 @@ export default function ProfilePage() {
 
               {/* Role — always read-only */}
               <div className="flex items-center gap-4 px-6 py-4 bg-slate-50/40">
-                <div className="w-9 h-9 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center flex-shrink-0">
-                  <Shield className="w-4 h-4 text-violet-600" />
+                <div className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0
+                  ${user?.role === 'admin' ? 'bg-violet-50 border-violet-100' 
+                  : user?.role === 'pops' ? 'bg-indigo-50 border-indigo-100' 
+                  : 'bg-blue-50 border-blue-100'}`}>
+                  <Shield className={`w-4 h-4 
+                    ${user?.role === 'admin' ? 'text-violet-600' 
+                    : user?.role === 'pops' ? 'text-indigo-600' 
+                    : 'text-blue-600'}`} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium mb-0.5">Role</p>
-                  <p className="text-sm font-semibold text-slate-800">{user?.role === 'admin' ? 'Administrator' : 'Standard User'}</p>
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider font-medium mb-0.5">System Role</p>
+                  <p className="text-sm font-semibold text-slate-800">
+                    {user?.role === 'admin' ? 'Administrator' : user?.role === 'pops' ? 'POPS Division Tracker' : 'Standard User'}
+                  </p>
                 </div>
                 <span className="text-[10px] text-slate-400 italic">System-assigned · not editable</span>
               </div>
