@@ -3,10 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   BarChart3,
-  FileSpreadsheet,
   ScrollText,
   Scale,
-  TrendingUp,
   LayoutList,
   ClipboardList,
   Inbox,
@@ -56,12 +54,10 @@ const adminNav: NavSection[] = [
         path: '/admin/budget',
         icon: BarChart3,
         children: [
-          { label: 'Appropriation', path: '/admin/budget/appropriation', icon: FileSpreadsheet },
           { label: 'Statement', path: '/admin/budget/statement', icon: ScrollText },
           { label: 'PPA Summary', path: '/admin/budget/ppa', icon: LayoutList },
           { label: 'Obligations', path: '/admin/budget/obligations', icon: ScrollText },
           { label: 'Balances',      path: '/admin/budget/balances',  icon: Scale },
-          { label: 'Utilization',   path: '/admin/budget/utilization', icon: TrendingUp },
           { label: 'Budget Releases', path: '/admin/budget/releases', icon: Wallet },
           { label: 'History',       path: '/admin/budget/trash',     icon: History },
         ],
@@ -90,6 +86,7 @@ const adminNav: NavSection[] = [
     title: 'Administration',
     items: [
       { label: 'User Management', path: '/admin/users', icon: Users },
+      { label: 'Settings', path: '/admin/settings', icon: Settings },
     ],
   },
 ];
@@ -108,12 +105,10 @@ const userNav: NavSection[] = [
         path: '/user/budget',
         icon: BarChart3,
         children: [
-          { label: 'Appropriation', path: '/user/budget/appropriation', icon: FileSpreadsheet },
           { label: 'Statement', path: '/user/budget/statement', icon: ScrollText },
           { label: 'PPA Summary', path: '/user/budget/ppa', icon: LayoutList },
           { label: 'Obligations', path: '/user/budget/obligations', icon: ScrollText },
           { label: 'Balances',      path: '/user/budget/balances',   icon: Scale },
-          { label: 'Utilization',   path: '/user/budget/utilization', icon: TrendingUp },
           { label: 'Budget Releases', path: '/user/budget/releases',  icon: Wallet },
           { label: 'History',       path: '/user/budget/trash',      icon: History },
         ],

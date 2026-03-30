@@ -28,7 +28,7 @@ import { ppaFundMapping } from '@/data/ppaFundMapping';
 import type { BudgetRelease, StatementRecord, PPARecord } from '@/types';
 import { ChevronsUpDown } from 'lucide-react';
 
-// ── Color palette cycling for dynamically-detected fund types ─────────────
+// â”€â”€ Color palette cycling for dynamically-detected fund types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const COLOR_PALETTE = [
   { bg: 'bg-blue-50',    text: 'text-blue-700',    badgeBg: 'bg-blue-100',    badgeText: 'text-blue-700',    border: 'border-blue-200' },
   { bg: 'bg-violet-50',  text: 'text-violet-700',  badgeBg: 'bg-violet-100',  badgeText: 'text-violet-700',  border: 'border-violet-200' },
@@ -37,7 +37,7 @@ const COLOR_PALETTE = [
   { bg: 'bg-rose-50',    text: 'text-rose-700',    badgeBg: 'bg-rose-100',    badgeText: 'text-rose-700',    border: 'border-rose-200' },
 ];
 
-// ── Fund section derived from Statement Records ─────────────────────────────
+// â”€â”€ Fund section derived from Statement Records â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface FundSection {
   key: string;        // full label e.g. "A. Personal Services"
   shortLabel: string; // short label e.g. "Personal Services"
@@ -97,7 +97,7 @@ const emptyForm = {
   purpose: '',
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function BudgetReleasePage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
@@ -111,6 +111,7 @@ export default function BudgetReleasePage() {
   const [showForm, setShowForm]     = useState(false);
   const [fppOpen, setFppOpen]       = useState(false); // for fpp combobox
   const [fppQuery, setFppQuery]     = useState('');    // custom search for fpp combo
+  const [fppLimit, setFppLimit]     = useState(25);    // optimize large renders
   const [fundOpen, setFundOpen]     = useState(false); // for fund combobox
   const [form, setForm]             = useState({ ...emptyForm, department: user?.office ?? '' });
   const [submitting, setSubmitting] = useState(false);
@@ -230,6 +231,18 @@ export default function BudgetReleasePage() {
     );
   }, [ppaRecords, fppQuery, activeSection]);
 
+  // Automatically reset the render limit to keep performance pristine whenever search/fund changes
+  useEffect(() => { setFppLimit(25); }, [fppQuery, activeSection]);
+
+  const handleFppScroll = (e: any) => {
+    const target = e.target as HTMLElement;
+    // looser threshold of 50px so it proactively triggers during momentum scrolls
+    const bottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+    if (bottom && fppLimit < fppOptions.length) {
+      setFppLimit(prev => prev + 25);
+    }
+  };
+
   // Specific PPA based on selected FPP Code (looks in options to get merged data)
   const activePPA = useMemo(() => {
     return fppOptions.find(p => p.fppCode === form.fppCode) ?? null;
@@ -340,7 +353,7 @@ export default function BudgetReleasePage() {
         </div>
       )}
 
-      {/* Live Balance Cards — dynamically from Statement */}
+      {/* Live Balance Cards â€” dynamically from Statement */}
       {fundSections.length > 0 && (
         <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(fundSections.length, 3)} gap-3`}>
           {fundSections.map(section => {
@@ -411,7 +424,7 @@ export default function BudgetReleasePage() {
               </div>
               <div className="relative sm:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <Input placeholder="Search…" className="pl-9 h-8 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+                <Input placeholder="Searchâ€¦" className="pl-9 h-8 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
               </div>
             </div>
           </div>
@@ -454,11 +467,11 @@ export default function BudgetReleasePage() {
                         </td>
                         <td className="py-2.5 px-4 font-mono text-blue-700 font-semibold whitespace-nowrap">{r.fppCode}</td>
                         <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate">{r.department}</td>
-                        <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate" title={r.payee}>{r.payee || '—'}</td>
+                        <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate" title={r.payee}>{r.payee || 'â€”'}</td>
                         <td className="py-2.5 px-4 text-slate-600 max-w-[200px]">
                           <p className="truncate" title={r.purpose}>{r.purpose}</p>
                         </td>
-                        <td className="py-2.5 px-4 font-mono text-slate-600">{r.accountCode || '—'}</td>
+                        <td className="py-2.5 px-4 font-mono text-slate-600">{r.accountCode || 'â€”'}</td>
                         <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
                         <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">{r.submittedBy}</td>
                         <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
@@ -481,221 +494,227 @@ export default function BudgetReleasePage() {
         </CardContent>
       </Card>
 
-      {/* ── New Entry Modal ─────────────────────────────────────────────── */}
+      {/* â”€â”€ New Entry Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Dialog open={showForm} onOpenChange={v => { if (!v) setShowForm(false); }}>
-        <DialogContent className="max-w-4xl sm:max-w-4xl w-full gap-0 p-0 overflow-hidden rounded-lg shadow-2xl">
-          <DialogHeader className="px-6 py-4 border-b">
-            <DialogTitle className="text-slate-800 font-bold flex items-center gap-2">
+        <DialogContent className="w-full max-w-4xl gap-0 p-0 overflow-hidden rounded-none sm:rounded-lg shadow-2xl flex flex-col sm:max-h-[90vh] max-h-screen">
+          <DialogHeader className="px-4 sm:px-6 py-3 sm:py-4 border-b shrink-0">
+            <DialogTitle className="text-slate-800 font-bold flex items-center gap-2 text-sm">
               <PlusCircle className="w-4 h-4 text-blue-600" /> New Budget Release Entry
             </DialogTitle>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-            {/* ── Left Column ── */}
-            <div className="p-6 space-y-5">
-              {/* FPP Code auto-suggest */}
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Program/Project (FPP Code) *</Label>
-                <Popover open={fppOpen} onOpenChange={v => { setFppOpen(v); if (!v) setFppQuery(''); }}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={fppOpen}
-                      className="w-full h-10 text-[11px] font-mono bg-white border-slate-200 shadow-none hover:bg-slate-50 text-slate-700 flex items-center px-3"
-                    >
-                      <div className="flex-1 text-left truncate flex items-center gap-1.5 overflow-hidden">
-                        {form.fppCode ? (
-                          activePPA ? (
-                            <>
-                              <span className="font-bold text-blue-700 shrink-0">{activePPA.fppCode}</span>
-                              <span className="text-slate-400 shrink-0">—</span>
-                              <span className="truncate">{activePPA.programProjectActivity}</span>
-                            </>
-                          ) : (
-                            form.fppCode
-                          )
-                        ) : (
-                          <span className="text-slate-400 font-sans">Search by FPP Code...</span>
-                        )}
-                      </div>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[450px] p-0 shadow-xl border-slate-200 z-[9999]" align="start" sideOffset={8}>
-                    <Command shouldFilter={false}>
-                      <CommandInput 
-                        placeholder="Search FPP code or project name..." 
-                        className="text-xs h-10" 
-                        value={fppQuery}
-                        onValueChange={setFppQuery}
-                      />
-                      <CommandList>
-                        <CommandEmpty className="py-4 text-xs text-center text-slate-500">No FPP matches found.</CommandEmpty>
-                        <CommandGroup>
-                          {fppOptions.map((ppa) => (
-                            <CommandItem
-                              key={ppa.id}
-                              value={`${ppa.fppCode} ${ppa.programProjectActivity}`}
-                              onSelect={() => {
-                                setForm(p => ({ ...p, fppCode: ppa.fppCode }));
-                                setFppOpen(false);
-                              }}
-                              className="flex flex-col items-start gap-1 py-2 px-3 hover:bg-slate-50 aria-selected:bg-blue-50 cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between w-full">
-                                <span className="font-mono font-bold text-xs text-blue-700">
-                                  {ppa.fppCode}
-                                </span>
-                                <span className="text-[10px] font-mono text-emerald-600 font-bold">
-                                  {formatPeso(ppa.balanceOfAllotment)}
-                                </span>
-                              </div>
-                              <span className="text-xs text-slate-600 line-clamp-1">{ppa.programProjectActivity}</span>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+          {/* Scrollable body */}
+          <div className="overflow-y-auto flex-1 min-h-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
 
-                {/* Once selected, show full title and specific balance prominently */}
-                {activePPA && (
-                  <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-lg">
-                    <p className="text-xs text-slate-700 font-medium leading-relaxed mb-2">
-                      {activePPA.programProjectActivity}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PPA Available Balance:</span>
-                      <span className="text-sm font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                        {formatPeso(activePPA.balanceOfAllotment)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Account Code, Department & Payee */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* â”€â”€ Left Column â”€â”€ */}
+              <div className="px-4 sm:px-6 py-5 space-y-4">
+                {/* FPP Code auto-suggest */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Account Code</Label>
-                  <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. 5-02-01-010"
-                    value={form.accountCode} onChange={e => setForm(p => ({ ...p, accountCode: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Department / Office *</Label>
-                  <Input className="h-10 text-xs bg-white" placeholder="e.g. Office of the Governor"
-                    value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Payee</Label>
-                <Input className="h-10 text-xs bg-white" placeholder="e.g. Juan De La Cruz / ABC Corp"
-                  value={form.payee} onChange={e => setForm(p => ({ ...p, payee: e.target.value }))} />
-              </div>
-            </div>
-
-            {/* ── Right Column ── */}
-            <div className="p-6 space-y-5 bg-slate-50/50">
-              {/* Fund Type — locked nice label */}
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Authorized Fund Type
-                </Label>
-                {fundSections.length === 0 ? (
-                  <p className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
-                    No Statement data available. Please import the Statement of Appropriations first.
-                  </p>
-                ) : fundSections.length === 1 ? (
-                  <div className={`px-4 py-3 rounded-xl border flex items-center justify-between ${activeSection.colors.bg} ${activeSection.colors.border}`}>
-                    <span className={`text-sm font-bold ${activeSection.colors.text}`}>
-                      {activeSection.shortLabel}
-                    </span>
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-500 font-semibold uppercase block leading-none mb-1">Total Available</span>
-                      <span className={`text-sm font-mono font-bold ${activeSection.colors.text} leading-none`}>
-                        {formatPeso(getRemainingForSection(activeSection))}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <Popover open={fundOpen} onOpenChange={setFundOpen}>
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Program/Project (FPP Code) *</Label>
+                  <Popover open={fppOpen} onOpenChange={v => { setFppOpen(v); if (!v) setFppQuery(''); }} modal={true}>
                     <PopoverTrigger asChild>
-                      <button className={`w-full h-14 px-4 py-0 flex items-center justify-between rounded-xl border shadow-none ${activeSection.colors.bg} ${activeSection.colors.border} hover:opacity-90 transition-opacity outline-none text-left`}>
-                        <div className="flex-1 flex items-center justify-between text-left">
-                          <span className={`text-sm font-bold ${activeSection.colors.text}`}>
-                            {activeSection.shortLabel}
-                          </span>
-                          <div className="text-right flex items-center justify-end gap-2">
-                            <div>
-                              <span className="text-[10px] text-slate-500 font-semibold uppercase block leading-none mb-1">Total Available</span>
-                              <span className={`text-sm font-mono font-bold ${activeSection.colors.text} leading-none`}>
-                                {formatPeso(getRemainingForSection(activeSection))}
-                              </span>
-                            </div>
-                            <ChevronsUpDown className={`w-4 h-4 opacity-50 ${activeSection.colors.text}`} />
-                          </div>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={fppOpen}
+                        className="w-full h-10 text-[11px] font-mono bg-white border-slate-200 shadow-none hover:bg-slate-50 text-slate-700 flex items-center px-3"
+                      >
+                        <div className="flex-1 text-left truncate flex items-center gap-1.5 overflow-hidden">
+                          {form.fppCode ? (
+                            activePPA ? (
+                              <>
+                                <span className="font-bold text-blue-700 shrink-0">{activePPA.fppCode}</span>
+                                <span className="text-slate-400 shrink-0">â€”</span>
+                                <span className="truncate">{activePPA.programProjectActivity}</span>
+                              </>
+                            ) : (
+                              form.fppCode
+                            )
+                          ) : (
+                            <span className="text-slate-400 font-sans">Search by FPP Code...</span>
+                          )}
                         </div>
-                      </button>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
                     </PopoverTrigger>
-                    <PopoverContent align="start" className="w-[300px] p-0 shadow-xl border-slate-200 z-[9999]" sideOffset={4}>
-                      <Command>
-                        <CommandList>
+                    <PopoverContent className="w-[min(90vw,450px)] p-0 shadow-xl border-slate-200 z-[9999]" align="start" sideOffset={8}>
+                      <Command shouldFilter={false}>
+                        <CommandInput
+                          placeholder="Search FPP code or project name..."
+                          className="text-xs h-10"
+                          value={fppQuery}
+                          onValueChange={setFppQuery}
+                        />
+                        <CommandList
+                          onScroll={handleFppScroll}
+                          className="max-h-[250px] overflow-y-auto pointer-events-auto touch-auto [&::-webkit-scrollbar]:block [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full pb-2"
+                          style={{ overscrollBehavior: 'contain' }}
+                        >
+                          <CommandEmpty className="py-4 text-xs text-center text-slate-500">No FPP matches found.</CommandEmpty>
                           <CommandGroup>
-                            {fundSections.map(s => (
+                            {fppOptions.slice(0, fppLimit).map((ppa) => (
                               <CommandItem
-                                key={s.key}
-                                value={s.key}
+                                key={ppa.id}
+                                value={`${ppa.fppCode} ${ppa.programProjectActivity}`}
                                 onSelect={() => {
-                                  setForm(p => ({ ...p, fundTypeKey: s.key, amount: '' }));
-                                  setFundOpen(false);
+                                  setForm(p => ({ ...p, fppCode: ppa.fppCode }));
+                                  setFppOpen(false);
                                 }}
-                                className="flex items-center justify-between py-2.5 px-3 cursor-pointer hover:bg-slate-50 aria-selected:bg-blue-50"
+                                className="flex flex-col items-start gap-1 py-2 px-3 hover:bg-slate-50 aria-selected:bg-blue-50 cursor-pointer"
                               >
-                                <span className="font-bold text-sm w-full truncate pr-2">{s.shortLabel}</span>
-                                <span className="text-xs font-mono text-emerald-600 font-semibold shrink-0">
-                                  {formatPeso(getRemainingForSection(s))}
-                                </span>
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="font-mono font-bold text-xs text-blue-700">{ppa.fppCode}</span>
+                                  <span className="text-[10px] font-mono text-emerald-600 font-bold">{formatPeso(ppa.balanceOfAllotment)}</span>
+                                </div>
+                                <span className="text-xs text-slate-600 line-clamp-1">{ppa.programProjectActivity}</span>
                               </CommandItem>
                             ))}
+                            {fppLimit < fppOptions.length && (
+                              <div className="py-3 text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center justify-center gap-2">
+                                <span className="w-3 h-3 border-2 border-slate-200 border-t-blue-500 rounded-full animate-spin"></span>
+                                Loading more...
+                              </div>
+                            )}
                           </CommandGroup>
                         </CommandList>
                       </Command>
                     </PopoverContent>
                   </Popover>
-                )}
+
+                  {/* Once selected, show full title and specific balance prominently */}
+                  {activePPA && (
+                    <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                      <p className="text-xs text-slate-700 font-medium leading-relaxed mb-2">
+                        {activePPA.programProjectActivity}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">PPA Available Balance:</span>
+                        <span className="text-sm font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                          {formatPeso(activePPA.balanceOfAllotment)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Account Code, Department & Payee */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Account Code</Label>
+                    <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. 5-02-01-010"
+                      value={form.accountCode} onChange={e => setForm(p => ({ ...p, accountCode: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Department / Office *</Label>
+                    <Input className="h-10 text-xs bg-white" placeholder="e.g. Office of the Governor"
+                      value={form.department} onChange={e => setForm(p => ({ ...p, department: e.target.value }))} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Payee</Label>
+                  <Input className="h-10 text-xs bg-white" placeholder="e.g. Juan De La Cruz / ABC Corp"
+                    value={form.payee} onChange={e => setForm(p => ({ ...p, payee: e.target.value }))} />
+                </div>
               </div>
 
-              {/* Amount */}
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Amount (₱) *</Label>
-                <Input className="h-10 text-base font-mono font-bold bg-white" placeholder="0.00" type="number" min={0}
-                  value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
-                {form.amount && parseFloat(form.amount) > 0 && activePPA && (
-                  <p className={`text-[10px] font-medium ${
-                    (activePPA.balanceOfAllotment - parseFloat(form.amount)) < 0 ? 'text-rose-600' : 'text-emerald-600'
-                  }`}>
-                    After this PR: {formatPeso(activePPA.balanceOfAllotment - parseFloat(form.amount))} remaining for this PPA.
-                  </p>
-                )}
+              {/* â”€â”€ Right Column â”€â”€ */}
+              <div className="px-4 sm:px-6 py-5 space-y-4 bg-slate-50/50">
+                {/* Fund Type */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Authorized Fund Type</Label>
+                  {fundSections.length === 0 ? (
+                    <p className="text-xs text-amber-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                      No Statement data available. Please import the Statement of Appropriations first.
+                    </p>
+                  ) : fundSections.length === 1 ? (
+                    <div className={`px-4 py-3 rounded-xl border flex items-center justify-between ${activeSection.colors.bg} ${activeSection.colors.border}`}>
+                      <span className={`text-sm font-bold ${activeSection.colors.text}`}>{activeSection.shortLabel}</span>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-500 font-semibold uppercase block leading-none mb-1">Total Available</span>
+                        <span className={`text-sm font-mono font-bold ${activeSection.colors.text} leading-none`}>
+                          {formatPeso(getRemainingForSection(activeSection))}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <Popover open={fundOpen} onOpenChange={setFundOpen}>
+                      <PopoverTrigger asChild>
+                        <button className={`w-full h-14 px-4 py-0 flex items-center justify-between rounded-xl border shadow-none ${activeSection.colors.bg} ${activeSection.colors.border} hover:opacity-90 transition-opacity outline-none text-left`}>
+                          <div className="flex-1 flex items-center justify-between text-left">
+                            <span className={`text-sm font-bold ${activeSection.colors.text}`}>{activeSection.shortLabel}</span>
+                            <div className="text-right flex items-center justify-end gap-2">
+                              <div>
+                                <span className="text-[10px] text-slate-500 font-semibold uppercase block leading-none mb-1">Total Available</span>
+                                <span className={`text-sm font-mono font-bold ${activeSection.colors.text} leading-none`}>
+                                  {formatPeso(getRemainingForSection(activeSection))}
+                                </span>
+                              </div>
+                              <ChevronsUpDown className={`w-4 h-4 opacity-50 ${activeSection.colors.text}`} />
+                            </div>
+                          </div>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[300px] p-0 shadow-xl border-slate-200 z-[9999]" sideOffset={4}>
+                        <Command>
+                          <CommandList>
+                            <CommandGroup>
+                              {fundSections.map(s => (
+                                <CommandItem
+                                  key={s.key}
+                                  value={s.key}
+                                  onSelect={() => {
+                                    setForm(p => ({ ...p, fundTypeKey: s.key, amount: '' }));
+                                    setFundOpen(false);
+                                  }}
+                                  className="flex items-center justify-between py-2.5 px-3 cursor-pointer hover:bg-slate-50 aria-selected:bg-blue-50"
+                                >
+                                  <span className="font-bold text-sm w-full truncate pr-2">{s.shortLabel}</span>
+                                  <span className="text-xs font-mono text-emerald-600 font-semibold shrink-0">
+                                    {formatPeso(getRemainingForSection(s))}
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+
+                {/* Amount */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Amount (â‚±) *</Label>
+                  <Input className="h-10 text-base font-mono font-bold bg-white" placeholder="0.00" type="number" min={0}
+                    value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
+                  {form.amount && parseFloat(form.amount) > 0 && activePPA && (
+                    <p className={`text-[10px] font-medium ${
+                      (activePPA.balanceOfAllotment - parseFloat(form.amount)) < 0 ? 'text-rose-600' : 'text-emerald-600'
+                    }`}>
+                      After this PR: {formatPeso(activePPA.balanceOfAllotment - parseFloat(form.amount))} remaining for this PPA.
+                    </p>
+                  )}
+                </div>
+
+                {/* Purpose */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Purpose/Particulars *</Label>
+                  <textarea
+                    className="w-full h-20 text-xs border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700"
+                    placeholder="Describe what this budget release is forâ€¦"
+                    value={form.purpose}
+                    onChange={e => setForm(p => ({ ...p, purpose: e.target.value }))}
+                  />
+                </div>
               </div>
 
-              {/* Purpose */}
-              <div className="space-y-1.5">
-                <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Purpose/Particulars *</Label>
-                <textarea
-                  className="w-full h-20 text-xs border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700"
-                  placeholder="Describe what this budget release is for…"
-                  value={form.purpose}
-                  onChange={e => setForm(p => ({ ...p, purpose: e.target.value }))}
-                />
-              </div>
             </div>
-          </div>
+          </div>{/* end scrollable body */}
 
-          <div className="px-6 pb-5 pt-4 flex items-center justify-between border-t border-slate-100">
+          {/* Sticky footer */}
+          <div className="px-4 sm:px-6 pb-4 pt-3 flex items-center justify-between border-t border-slate-100 shrink-0 bg-white">
             <button
               onClick={() => setShowForm(false)}
               disabled={submitting}

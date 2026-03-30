@@ -8,10 +8,8 @@ import AdminDashboard from '@/pages/admin/AdminDashboard';
 import UserDashboard from '@/pages/user/UserDashboard';
 
 // Admin - Budget
-import AdminAppropriationPage from '@/pages/admin/budget/AppropriationPage';
 import AdminObligationsPage from '@/pages/admin/budget/ObligationsPage';
 import AdminBalancesPage from '@/pages/admin/budget/BalancesPage';
-import AdminUtilizationPage from '@/pages/admin/budget/UtilizationPage';
 import AdminStatementPage from '@/pages/admin/budget/StatementPage';
 import AdminPPAPage from '@/pages/admin/budget/PPAPage';
 import BudgetTrashPage from '@/pages/admin/budget/BudgetTrashPage';
@@ -20,12 +18,11 @@ import UploadCenterPage from '@/pages/admin/upload/UploadCenterPage';
 import RequestManagementPage from '@/pages/admin/requests/RequestManagementPage';
 import UserManagementPage from '@/pages/admin/users/UserManagementPage';
 import ProfilePage from '@/pages/shared/ProfilePage';
+import SettingsPage from '@/pages/shared/SettingsPage';
 
 // User - Budget
-import UserAppropriationPage from '@/pages/user/budget/AppropriationPage';
 import UserObligationsPage from '@/pages/user/budget/ObligationsPage';
 import UserBalancesPage from '@/pages/user/budget/BalancesPage';
-import UserUtilizationPage from '@/pages/user/budget/UtilizationPage';
 import UserStatementPage from '@/pages/user/budget/StatementPage';
 import UserPPAPage from '@/pages/user/budget/PPAPage';
 
@@ -69,10 +66,8 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/admin/dashboard', element: <AdminDashboard /> },
-          { path: '/admin/budget/appropriation', element: <AdminAppropriationPage /> },
           { path: '/admin/budget/obligations', element: <AdminObligationsPage /> },
           { path: '/admin/budget/balances', element: <AdminBalancesPage /> },
-          { path: '/admin/budget/utilization', element: <AdminUtilizationPage /> },
           { path: '/admin/budget/statement', element: <AdminStatementPage /> },
           { path: '/admin/budget/ppa', element: <AdminPPAPage /> },
           { path: '/admin/budget/trash', element: <BudgetTrashPage /> },
@@ -87,6 +82,7 @@ export const router = createBrowserRouter([
           { path: '/admin/requests/pr', element: <RequestManagementPage /> },
           { path: '/admin/users', element: <UserManagementPage /> },
           { path: '/admin/profile', element: <ProfilePage /> },
+          { path: '/admin/settings', element: <SettingsPage /> },
           { path: '/admin/*', element: <Navigate to="/admin/dashboard" replace /> },
         ],
       },
@@ -101,15 +97,14 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/user/dashboard', element: <UserDashboard /> },
-          { path: '/user/budget/appropriation', element: <UserAppropriationPage /> },
           { path: '/user/budget/obligations', element: <UserObligationsPage /> },
           { path: '/user/budget/balances', element: <UserBalancesPage /> },
-          { path: '/user/budget/utilization', element: <UserUtilizationPage /> },
           { path: '/user/budget/statement', element: <UserStatementPage /> },
           { path: '/user/budget/ppa', element: <UserPPAPage /> },
           { path: '/user/budget/trash', element: <BudgetTrashPage /> },
           { path: '/user/budget/releases', element: <BudgetReleasePage /> },
           { path: '/user/profile', element: <ProfilePage /> },
+          { path: '/user/settings', element: <SettingsPage /> },
           { path: '/user/*', element: <Navigate to="/user/dashboard" replace /> },
         ],
       },

@@ -1,6 +1,9 @@
 import { RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sileo';
 import { router } from '@/routes';
+import { initializeTheme } from '@/stores/themeStore';
+
+initializeTheme();
 
 function App() {
   return (
