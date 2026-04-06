@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   Plus, Trash2, Search, Download, FileText,
   CalendarIcon, FileDigit, BookOpen, Receipt,
-  Landmark, PiggyBank, StickyNote, DollarSign, Eye,
+  Landmark, PiggyBank, StickyNote, Eye,
   Printer, FileDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -455,14 +455,14 @@ export default function POPSOfficeTrackerPage() {
             {/* Row 3: Amounts */}
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5" /> Financial Amounts (₱)
+                <span className="text-slate-400 font-bold text-sm">₱</span> Financial Amounts (Peso)
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                  { label: 'PR Amount',    icon: DollarSign, field: 'prAmount'       as const, border: 'border-blue-200' },
-                  { label: 'P.D Amount',   icon: Landmark,   field: 'pdAmount'       as const, border: 'border-violet-200' },
-                  { label: 'D.V Amount',   icon: FileText,   field: 'dvAmount'       as const, border: 'border-cyan-200' },
-                  { label: 'Bal./Savings', icon: PiggyBank,  field: 'balanceSavings' as const, border: 'border-emerald-200' },
+                  { label: 'PR Amount',    icon: Receipt,   field: 'prAmount'       as const, border: 'border-blue-200' },
+                  { label: 'P.D Amount',   icon: Landmark,  field: 'pdAmount'       as const, border: 'border-violet-200' },
+                  { label: 'D.V Amount',   icon: FileText,  field: 'dvAmount'       as const, border: 'border-cyan-200' },
+                  { label: 'Bal./Savings', icon: PiggyBank, field: 'balanceSavings' as const, border: 'border-emerald-200' },
                 ].map(({ label, icon: Icon, field, border }) => (
                   <div key={field} className="space-y-2">
                     <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">

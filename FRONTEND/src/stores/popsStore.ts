@@ -8,7 +8,7 @@ import { db } from '@/backend/firebase';
 
 // ── POPS sub-offices ────────────────────────────────────────────────
 export const POPS_OFFICES = [
-  { key: 'mbda',    label: 'MBDA',    fullName: 'Municipal/Barangay Drug Abuse' },
+  { key: 'mbda',    label: 'MBDA',    fullName: 'Metro Bataan Development Authority' },
   { key: 'bjmp',    label: 'BJMP',    fullName: 'Bureau of Jail Management & Penology' },
   { key: 'pdea',    label: 'PDEA',    fullName: 'Philippine Drug Enforcement Agency' },
   { key: 'pnp',     label: 'PNP',     fullName: 'Philippine National Police' },
