@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   PlusCircle, Wallet, CheckCircle2, AlertTriangle,
-  Trash2, Search, FileOutput,
+  Trash2, Search, FileOutput, Upload, FileSpreadsheet, Pencil, CalendarIcon,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -13,20 +13,42 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
+import { Calendar } from '@/components/ui/calendar';
 import { db } from '@/backend/firebase';
 import {
-  collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy, getDoc
+  collection, onSnapshot, addDoc, deleteDoc, doc, query, orderBy, getDoc, writeBatch, updateDoc
 } from 'firebase/firestore';
 import { useAuthStore } from '@/stores/authStore';
 import { formatPeso } from '@/data/mockData';
 import { ppaFundMapping } from '@/data/ppaFundMapping';
 import type { BudgetRelease, StatementRecord, PPARecord } from '@/types';
 import { ChevronsUpDown } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { format } from 'date-fns';
 
 // â”€â”€ Color palette cycling for dynamically-detected fund types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const COLOR_PALETTE = [
@@ -95,12 +117,36 @@ const emptyForm = {
   accountCode: '',
   payee: '',
   purpose: '',
+  prNumber: '',
+  obrNumber: '',
+  dateReleased: '',
+  dvAmount: '',
 };
 
 // â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function BudgetReleasePage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+
+  // Helper functions for number formatting with commas
+  const formatNumberWithCommas = (value: string): string => {
+    // Remove all non-digit characters except decimal point
+    const cleanValue = value.replace(/[^\d.]/g, '');
+    
+    // Split into integer and decimal parts
+    const parts = cleanValue.split('.');
+    
+    // Add commas to integer part
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Return formatted value (limit to 2 decimal places)
+    return parts.length > 1 ? `${parts[0]}.${parts[1].slice(0, 2)}` : parts[0];
+  };
+
+  const parseFormattedNumber = (value: string): string => {
+    // Remove commas for storage
+    return value.replace(/,/g, '');
+  };
 
   const [releases, setReleases]                 = useState<BudgetRelease[]>([]);
   const [statementRecords, setStatementRecords] = useState<StatementRecord[]>([]);
@@ -117,6 +163,44 @@ export default function BudgetReleasePage() {
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch]         = useState('');
   const [filterFund, setFilterFund] = useState<string>('All');
+  
+  // Import states
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string>('');
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Edit states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<BudgetRelease | null>(null);
+  const [editForm, setEditForm] = useState({
+    fppCode: '',
+    accountCode: '',
+    payee: '',
+    office: '',
+    particulars: '',
+    amount: '',
+    prNumber: '',
+    obrNumber: '',
+    dateReleased: '',
+    dvAmount: '',
+  });
+  const [updating, setUpdating] = useState(false);
+  
+  // Delete confirmation states
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  
+  // Delete import batch confirmation states
+  const [showDeleteBatchDialog, setShowDeleteBatchDialog] = useState(false);
+  const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [deletingBatchInfo, setDeletingBatchInfo] = useState<{ count: number; sheetName: string } | null>(null);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
 
   // Live Firestore listeners
   useEffect(() => {
@@ -260,52 +344,57 @@ export default function BudgetReleasePage() {
         (r.payee ?? '').toLowerCase().includes(search.toLowerCase()) ||
         (r.accountCode ?? '').toLowerCase().includes(search.toLowerCase())
       );
-  }, [releases, filterFund, search]);
+  }, [releases, filterFund, search, isAdmin, user?.id]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(displayed.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedData = displayed.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterFund, search]);
 
   const handleSubmit = async () => {
-    if (!form.fppCode.trim())   return sileo.error({ title: 'FPP Code required' });
-    if (!form.purpose.trim())   return sileo.error({ title: 'Purpose required' });
-    const amount = parseFloat(form.amount);
-    if (!amount || amount <= 0) return sileo.error({ title: 'Valid amount required' });
+    // All fields are now optional - no validation required
+    const amount = parseFloat(form.amount) || 0;
 
     const section = fundSections.find(s => s.key === form.fundTypeKey);
-    if (!section)               return sileo.error({ title: 'Select a fund type' });
-
-    const remainingFund = getRemainingForSection(section);
-    if (remainingFund < amount) {
-      return sileo.error({
-        title: 'Insufficient Fund Balance',
-        description: `Only ${formatPeso(remainingFund)} remaining under ${section.shortLabel}.`,
-      });
+    if (!section && fundSections.length > 0) {
+      // Use first available fund section if none selected
+      const defaultSection = fundSections[0];
+      setForm(p => ({ ...p, fundTypeKey: defaultSection.key }));
+      return sileo.error({ title: 'Please select a fund type' });
     }
 
-    if (activePPA) {
-      // Check PPA balance (balanceOfAllotment) since user explicitly selected an FPP code
-      if (activePPA.balanceOfAllotment < amount) {
-        return sileo.error({
-          title: 'Insufficient PPA Balance',
-          description: `Only ${formatPeso(activePPA.balanceOfAllotment)} remaining for FPP Code ${activePPA.fppCode}.`,
-        });
-      }
-    }
+    const selectedSection = section || fundSections[0];
 
     setSubmitting(true);
     try {
       await addDoc(collection(db, 'budget_releases'), {
-        fundType:      section.key,
-        fundLabel:     section.shortLabel,
+        fundType:      selectedSection.key,
+        fundLabel:     selectedSection.shortLabel,
         fppCode:       form.fppCode.trim().toUpperCase(),
         department:    form.department.trim(),
         amount,
         accountCode:   form.accountCode.trim(),
         payee:         form.payee.trim(),
         purpose:       form.purpose.trim(),
+        prNumber:      form.prNumber.trim(),
+        obrNumber:     form.obrNumber.trim(),
+        dateReleased:  form.dateReleased ? new Date(form.dateReleased).toISOString() : '',
+        dvAmount:      parseFloat(form.dvAmount) || 0,
         submittedBy:   user?.name ?? user?.email ?? 'Unknown',
         submittedById: user?.id ?? '',
         office:        user?.office ?? '',
         createdAt:     new Date().toISOString(),
       });
-      sileo.success({ title: 'Budget Entry Recorded', description: `${formatPeso(amount)} logged under ${section.shortLabel}.` });
+      sileo.success({ 
+        title: 'Budget Entry Recorded', 
+        description: amount > 0 ? `${formatPeso(amount)} logged under ${selectedSection.shortLabel}.` : 'Entry saved successfully.'
+      });
       setForm(p => ({ ...emptyForm, department: p.department, fundTypeKey: p.fundTypeKey }));
       setShowForm(false);
     } catch (err: any) {
@@ -316,13 +405,302 @@ export default function BudgetReleasePage() {
   };
 
   const handleDelete = (id: string) => {
-    if (!isAdmin) return sileo.error({ title: 'Access Denied', description: 'Only admins can delete entries.' });
-    sileo.promise(deleteDoc(doc(db, 'budget_releases', id)), {
-      loading: { title: 'Deleting entry...' },
-      success: { title: 'Entry deleted.' },
-      error:   { title: 'Delete failed.' },
-    });
+    setDeletingEntryId(id);
+    setShowDeleteDialog(true);
   };
+
+  const confirmDelete = async () => {
+    if (!deletingEntryId) return;
+
+    try {
+      await deleteDoc(doc(db, 'budget_releases', deletingEntryId));
+      sileo.success({ title: 'Entry Deleted', description: 'Budget entry has been removed.' });
+      setShowDeleteDialog(false);
+      setDeletingEntryId(null);
+    } catch (err: any) {
+      sileo.error({ title: 'Delete Failed', description: err.message });
+    }
+  };
+
+  // Handle edit
+  const handleEdit = (entry: BudgetRelease) => {
+    setEditingEntry(entry);
+    setEditForm({
+      fppCode: entry.fppCode || '',
+      accountCode: entry.accountCode || '',
+      payee: entry.payee || '',
+      office: entry.department || '',
+      particulars: entry.purpose || '',
+      amount: entry.amount?.toString() || '',
+      prNumber: (entry as any).prNumber || '',
+      obrNumber: (entry as any).obrNumber || '',
+      dateReleased: (entry as any).dateReleased ? new Date((entry as any).dateReleased).toISOString().split('T')[0] : '',
+      dvAmount: (entry as any).dvAmount?.toString() || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateEntry = async () => {
+    if (!editingEntry) return;
+
+    const amount = parseFloat(editForm.amount);
+    if (!editForm.fppCode.trim() || !amount || amount <= 0 || !editForm.particulars.trim()) {
+      sileo.error({ title: 'Validation Error', description: 'FPP Code, Amount, and Particulars are required.' });
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const updateData: any = {
+        fppCode: editForm.fppCode.trim().toUpperCase(),
+        accountCode: editForm.accountCode.trim(),
+        payee: editForm.payee.trim(),
+        department: editForm.office.trim(),
+        purpose: editForm.particulars.trim(),
+        amount,
+        prNumber: editForm.prNumber.trim(),
+        obrNumber: editForm.obrNumber.trim(),
+        dateReleased: editForm.dateReleased ? new Date(editForm.dateReleased).toISOString() : '',
+        dvAmount: parseFloat(editForm.dvAmount) || 0,
+      };
+
+      await updateDoc(doc(db, 'budget_releases', editingEntry.id), updateData);
+      
+      sileo.success({ title: 'Entry Updated', description: 'Budget entry has been updated successfully.' });
+      setShowEditModal(false);
+      setEditingEntry(null);
+    } catch (err: any) {
+      sileo.error({ title: 'Update Failed', description: err.message });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handle file selection and read sheets
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      
+      setSelectedFile(file);
+      setAvailableSheets(workbook.SheetNames);
+      setSelectedSheet(workbook.SheetNames[0] || '');
+      setShowImportModal(true);
+    } catch (err: any) {
+      sileo.error({ title: 'File Read Error', description: err.message });
+    }
+  };
+
+  // Import selected sheet
+  const handleImport = async () => {
+    if (!selectedFile || !selectedSheet) return;
+
+    setImporting(true);
+    try {
+      const data = await selectedFile.arrayBuffer();
+      const workbook = XLSX.read(data, { cellDates: true, dateNF: 'yyyy-mm-dd' });
+      const worksheet = workbook.Sheets[selectedSheet];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd' }) as any[];
+
+      if (jsonData.length === 0) {
+        sileo.error({ title: 'Empty Sheet', description: 'The selected sheet contains no data.' });
+        setImporting(false);
+        return;
+      }
+
+      const batchId = `import_${Date.now()}_${user?.id}`;
+      const batch = writeBatch(db);
+      const collectionRef = collection(db, 'budget_releases');
+      let importCount = 0;
+
+      for (const row of jsonData) {
+        // Extract data from Excel columns
+        const fppCode = String(row['FPP'] || row['fpp'] || '').trim();
+        const accountCode = String(row['Account Code'] || row['account code'] || row['AccountCode'] || '').trim();
+        const payee = String(row['Payee'] || row['payee'] || '').trim();
+        const office = String(row['Office'] || row['office'] || user?.office || '').trim();
+        const particulars = String(row['Particulars'] || row['particulars'] || row['Purpose'] || '').trim();
+        const amount = parseFloat(String(row['Amount'] || row['amount'] || '0').replace(/[^0-9.-]/g, ''));
+        const prNumber = String(row['PR Number'] || row['pr number'] || row['PRNumber'] || '').trim();
+        const obrNumber = String(row['OBR Number'] || row['obr number'] || row['OBRNumber'] || '').trim();
+        const dvAmount = parseFloat(String(row['DV Amount'] || row['DV amount'] || row['dv amount'] || row['DVAmount'] || '0').replace(/[^0-9.-]/g, ''));
+
+        // Parse dates - with cellDates: true, XLSX converts dates to Date objects
+        const dateStr = row['Date'] || row['date'] || '';
+        let createdAt = new Date().toISOString();
+        if (dateStr) {
+          try {
+            // If it's already a Date object from XLSX
+            if (dateStr instanceof Date) {
+              createdAt = dateStr.toISOString();
+            } else if (typeof dateStr === 'string' && dateStr.trim()) {
+              const parsedDate = new Date(dateStr);
+              if (!isNaN(parsedDate.getTime())) {
+                createdAt = parsedDate.toISOString();
+              }
+            }
+          } catch (e) {
+            console.error('Date parsing error:', e);
+          }
+        }
+
+        const dateReleasedStr = row['Date Released'] || row['date released'] || row['DateReleased'] || '';
+        let dateReleased = '';
+        if (dateReleasedStr) {
+          try {
+            // If it's already a Date object from XLSX
+            if (dateReleasedStr instanceof Date) {
+              dateReleased = dateReleasedStr.toISOString();
+            } else if (typeof dateReleasedStr === 'string' && dateReleasedStr.trim()) {
+              const parsedDate = new Date(dateReleasedStr);
+              if (!isNaN(parsedDate.getTime())) {
+                dateReleased = parsedDate.toISOString();
+              }
+            }
+          } catch (e) {
+            console.error('Date Released parsing error:', e);
+          }
+        }
+
+        // Skip rows without required data
+        if (!fppCode || !amount || amount <= 0) continue;
+
+        // Try to match fund type
+        let fundType = '';
+        let fundLabel = '';
+        
+        const sheetNameUpper = selectedSheet.toUpperCase();
+        for (const section of fundSections) {
+          const sectionKey = section.key.toUpperCase();
+          const sectionLabel = section.shortLabel.toUpperCase();
+          
+          if (sheetNameUpper.includes('5%') && (sectionLabel.includes('5%') || sectionKey.includes('5%'))) {
+            fundType = section.key;
+            fundLabel = section.shortLabel;
+            break;
+          } else if (sheetNameUpper.includes('20%') && (sectionLabel.includes('20%') || sectionKey.includes('20%'))) {
+            fundType = section.key;
+            fundLabel = section.shortLabel;
+            break;
+          } else if (sheetNameUpper.includes('MOOE') && (sectionLabel.includes('MOOE') || sectionKey.includes('MOOE'))) {
+            fundType = section.key;
+            fundLabel = section.shortLabel;
+            break;
+          }
+        }
+
+        // Default to first fund section if no match
+        if (!fundType && fundSections.length > 0) {
+          fundType = fundSections[0].key;
+          fundLabel = fundSections[0].shortLabel;
+        }
+
+        const docRef = doc(collectionRef);
+        batch.set(docRef, {
+          fundType,
+          fundLabel,
+          fppCode,
+          accountCode,
+          payee,
+          department: office,
+          purpose: particulars,
+          amount,
+          prNumber,
+          obrNumber,
+          dateReleased,
+          dvAmount,
+          submittedBy: user?.name ?? user?.email ?? 'Unknown',
+          submittedById: user?.id ?? '',
+          office: user?.office ?? '',
+          createdAt,
+          batchId,
+          sheetName: selectedSheet,
+        });
+
+        importCount++;
+      }
+
+      await batch.commit();
+
+      sileo.success({
+        title: 'Import Successful',
+        description: `${importCount} entries imported from "${selectedSheet}"`,
+      });
+
+      // Reset
+      setShowImportModal(false);
+      setSelectedFile(null);
+      setAvailableSheets([]);
+      setSelectedSheet('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err: any) {
+      sileo.error({ title: 'Import Error', description: err.message });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Delete imported batch
+  const handleDeleteImport = async (batchId: string) => {
+    try {
+      const batch = writeBatch(db);
+      const entriesToDelete = releases.filter(r => (r as any).batchId === batchId);
+      
+      if (entriesToDelete.length === 0) {
+        sileo.error({ title: 'No Entries Found' });
+        return;
+      }
+
+      entriesToDelete.forEach(entry => {
+        batch.delete(doc(db, 'budget_releases', entry.id));
+      });
+
+      await batch.commit();
+
+      sileo.success({
+        title: 'Import Deleted',
+        description: `${entriesToDelete.length} entries removed`,
+      });
+    } catch (err: any) {
+      sileo.error({ title: 'Delete Failed', description: err.message });
+    }
+  };
+
+  const confirmDeleteBatch = async () => {
+    if (!deletingBatchId) return;
+
+    await handleDeleteImport(deletingBatchId);
+    setShowDeleteBatchDialog(false);
+    setDeletingBatchId(null);
+    setDeletingBatchInfo(null);
+  };
+
+  // Group releases by import batch
+  const importBatches = useMemo(() => {
+    const batches = new Map<string, { batchId: string; count: number; sheetName: string; date: string }>();
+    
+    releases.forEach(r => {
+      const batchId = (r as any).batchId;
+      if (!batchId) return;
+      
+      if (!batches.has(batchId)) {
+        batches.set(batchId, {
+          batchId,
+          count: 0,
+          sheetName: (r as any).sheetName || 'Imported Data',
+          date: r.createdAt,
+        });
+      }
+      batches.get(batchId)!.count++;
+    });
+
+    return Array.from(batches.values()).sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [releases]);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
@@ -337,9 +715,24 @@ export default function BudgetReleasePage() {
         description="Log your fund releases and check your remaining available budget before filing a Purchase Request (PR)."
         icon={Wallet}
         actions={
-          <Button size="sm" className="gap-2 text-xs h-8 text-white" style={{ background: '#1D4ED8' }} onClick={() => setShowForm(true)}>
-            <PlusCircle className="w-3.5 h-3.5" /> New Entry
-          </Button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleFileSelect}
+              className="hidden"
+              id="excel-file-input"
+            />
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="gap-2 text-xs h-8"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="w-3.5 h-3.5" /> Import
+            </Button>
+          </div>
         }
       />
 
@@ -353,7 +746,7 @@ export default function BudgetReleasePage() {
         </div>
       )}
 
-      {/* Live Balance Cards â€” dynamically from Statement */}
+      {/* Live Balance Cards �� dynamically from Statement */}
       {fundSections.length > 0 && (
         <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(fundSections.length, 3)} gap-3`}>
           {fundSections.map(section => {
@@ -396,15 +789,28 @@ export default function BudgetReleasePage() {
       {/* Entries Table */}
       <Card className="shadow-sm border-slate-100">
         <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex-1">
-              <CardTitle className="text-base font-semibold">
-                Budget Entries
-                <span className="ml-2 text-xs font-normal text-slate-400">{releases.length} total</span>
-              </CardTitle>
-              <CardDescription className="text-xs mt-0.5">All logged fund releases and utilizations.</CardDescription>
+          <div className="flex flex-col gap-3">
+            {/* Title and Total Row */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex-1">
+                <CardTitle className="text-base font-semibold">
+                  Budget Entries
+                  <span className="ml-2 text-xs font-normal text-slate-400">{displayed.length} entries</span>
+                </CardTitle>
+                <CardDescription className="text-xs mt-0.5">All logged fund releases and utilizations.</CardDescription>
+              </div>
+              
+              {/* Total Amount Display */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-4 py-2.5">
+                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider mb-0.5">Total Amount</p>
+                <p className="text-xl font-bold font-mono text-blue-900">
+                  {formatPeso(displayed.reduce((sum, entry) => sum + (entry.amount || 0), 0))}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+
+            {/* Filters and Search Row - Right Aligned */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
               <div className="flex bg-slate-100 p-1 rounded-lg gap-0.5">
                 <button
                   onClick={() => setFilterFund('All')}
@@ -422,9 +828,21 @@ export default function BudgetReleasePage() {
                   </button>
                 ))}
               </div>
-              <div className="relative sm:w-56">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                <Input placeholder="Searchâ€¦" className="pl-9 h-8 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+              
+              <div className="flex items-center gap-2">
+                <div className="relative w-full sm:w-56">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                  <Input placeholder="Search..." className="pl-9 h-8 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
+                </div>
+                
+                <Button 
+                  size="sm" 
+                  className="gap-2 text-xs h-8 text-white whitespace-nowrap" 
+                  style={{ background: '#1D4ED8' }} 
+                  onClick={() => setShowForm(true)}
+                >
+                  <PlusCircle className="w-3.5 h-3.5" /> Add New Entry
+                </Button>
               </div>
             </div>
           </div>
@@ -442,56 +860,251 @@ export default function BudgetReleasePage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 border-y border-slate-100">
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Fund Type</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">FPP Code</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider">Department</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Payee</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider">Purpose/Particulars</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Account Code</th>
-                    <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Logged By</th>
                     <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                    {isAdmin && <th className="py-2.5 px-4" />}
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">FPP</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Account Code</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Payee</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Office</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider">Particulars</th>
+                    <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">PR Number</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">OBR Number</th>
+                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date Released</th>
+                    <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">DV amount</th>
+                    <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {displayed.map(r => {
-                    const sec = fundSections.find(s => s.key === r.fundType);
-                    const c   = sec?.colors ?? COLOR_PALETTE[0];
+                  {/* Show import batches first */}
+                  {importBatches.map(batch => {
+                    const batchEntries = paginatedData.filter(r => (r as any).batchId === batch.batchId);
+                    if (batchEntries.length === 0) return null;
+
                     return (
-                      <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="py-2.5 px-4">
-                          <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${c.badgeBg} ${c.badgeText}`}>
-                            {(r as any).fundLabel ?? r.fundType}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 font-mono text-blue-700 font-semibold whitespace-nowrap">{r.fppCode}</td>
-                        <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate">{r.department}</td>
-                        <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate" title={r.payee}>{r.payee || 'â€”'}</td>
-                        <td className="py-2.5 px-4 text-slate-600 max-w-[200px]">
-                          <p className="truncate" title={r.purpose}>{r.purpose}</p>
-                        </td>
-                        <td className="py-2.5 px-4 font-mono text-slate-600">{r.accountCode || 'â€”'}</td>
-                        <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
-                        <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">{r.submittedBy}</td>
-                        <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
-                          {new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </td>
-                        {isAdmin && (
-                          <td className="py-2.5 px-4 text-right">
-                            <button onClick={() => handleDelete(r.id)} className="text-slate-300 hover:text-rose-500 transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                      <React.Fragment key={batch.batchId}>
+                        {/* Import Batch Header */}
+                        <tr className="bg-blue-50 border-y border-blue-200">
+                          <td colSpan={12} className="py-2 px-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                                <span className="text-xs font-bold text-blue-900">
+                                  {batch.sheetName}
+                                </span>
+                                <span className="text-xs text-blue-600">
+                                  ({batch.count} entries)
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setDeletingBatchId(batch.batchId);
+                                  setDeletingBatchInfo({ count: batch.count, sheetName: batch.sheetName });
+                                  setShowDeleteBatchDialog(true);
+                                }}
+                                className="h-7 gap-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-100"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                Delete Import
+                              </Button>
+                            </div>
                           </td>
-                        )}
-                      </tr>
+                        </tr>
+                        {/* Batch Entries */}
+                        {batchEntries.map(r => (
+                          <tr 
+                            key={r.id} 
+                            onClick={() => handleEdit(r)}
+                            className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                          >
+                            <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
+                              {new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                            <td className="py-2.5 px-4 font-mono text-blue-700 font-semibold whitespace-nowrap">{r.fppCode}</td>
+                            <td className="py-2.5 px-4 font-mono text-slate-600">{r.accountCode || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate" title={r.payee}>{r.payee || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate">{r.department}</td>
+                            <td className="py-2.5 px-4 text-slate-600 max-w-[200px]">
+                              <p className="truncate" title={r.purpose}>{r.purpose}</p>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
+                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).prNumber || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).obrNumber || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
+                              {(r as any).dateReleased 
+                                ? new Date((r as any).dateReleased).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                : '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
+                              {(r as any).dvAmount ? formatPeso((r as any).dvAmount) : '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => handleEdit(r)} 
+                                  className="text-slate-400 hover:text-blue-600 transition-colors"
+                                  title="Edit"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(r.id)} 
+                                  className="text-slate-400 hover:text-rose-600 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     );
                   })}
+
+                  {/* Manual entries (no batchId) */}
+                  {paginatedData.filter(r => !(r as any).batchId).length > 0 && (
+                    <>
+                      <tr className="bg-slate-50 border-y border-slate-200">
+                        <td colSpan={12} className="py-2 px-4">
+                          <div className="flex items-center gap-2">
+                            <PlusCircle className="w-4 h-4 text-slate-600" />
+                            <span className="text-xs font-bold text-slate-700">
+                              Manual Entries
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              ({paginatedData.filter(r => !(r as any).batchId).length} entries)
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {paginatedData.filter(r => !(r as any).batchId).map(r => {
+                        const canDelete = isAdmin || r.submittedById === user?.id;
+                        return (
+                          <tr 
+                            key={r.id} 
+                            onClick={() => handleEdit(r)}
+                            className="hover:bg-slate-50/60 transition-colors cursor-pointer"
+                          >
+                            <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
+                              {new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                            <td className="py-2.5 px-4 font-mono text-blue-700 font-semibold whitespace-nowrap">{r.fppCode}</td>
+                            <td className="py-2.5 px-4 font-mono text-slate-600">{r.accountCode || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate" title={r.payee}>{r.payee || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-700 font-medium max-w-[140px] truncate">{r.department}</td>
+                            <td className="py-2.5 px-4 text-slate-600 max-w-[200px]">
+                              <p className="truncate" title={r.purpose}>{r.purpose}</p>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
+                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).prNumber || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).obrNumber || '—'}</td>
+                            <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
+                              {(r as any).dateReleased 
+                                ? new Date((r as any).dateReleased).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                : '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
+                              {(r as any).dvAmount ? formatPeso((r as any).dvAmount) : '—'}
+                            </td>
+                            {canDelete && (
+                              <td className="py-2.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button 
+                                    onClick={() => handleEdit(r)} 
+                                    className="text-slate-400 hover:text-blue-600 transition-colors"
+                                    title="Edit"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDelete(r.id)} 
+                                    className="text-slate-400 hover:text-rose-600 transition-colors"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
           )}
         </CardContent>
+
+        {/* Pagination Controls */}
+        {displayed.length > itemsPerPage && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-xs text-slate-500">
+              Showing <span className="font-semibold text-slate-700">{startIndex + 1}</span> to{' '}
+              <span className="font-semibold text-slate-700">{Math.min(endIndex, displayed.length)}</span> of{' '}
+              <span className="font-semibold text-slate-700">{displayed.length}</span> entries
+            </div>
+            
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className={currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+
+                {/* Page numbers with ellipsis logic */}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => {
+                  // Show first page, last page, current page, and pages around current
+                  const showPage =
+                    pageNum === 1 ||
+                    pageNum === totalPages ||
+                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
+
+                  // Show ellipsis before current range
+                  const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
+                  // Show ellipsis after current range
+                  const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
+
+                  if (showEllipsisBefore || showEllipsisAfter) {
+                    return (
+                      <PaginationItem key={`ellipsis-${pageNum}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+
+                  if (!showPage) return null;
+
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(pageNum)}
+                        isActive={currentPage === pageNum}
+                        className="cursor-pointer"
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className={currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          </div>
+        )}
       </Card>
 
       {/* — New Entry Modal —————————————————————————————————————————————————————————————— */}
@@ -689,9 +1302,17 @@ export default function BudgetReleasePage() {
 
                 {/* Amount */}
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Amount (₱) *</Label>
-                  <Input className="h-10 text-base font-mono font-bold bg-white" placeholder="0.00" type="number" min={0}
-                    value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Amount (?) *</Label>
+                  <Input 
+                    className="h-10 text-base font-mono font-bold bg-white" 
+                    placeholder="0.00" 
+                    type="text"
+                    value={form.amount ? formatNumberWithCommas(form.amount) : ''}
+                    onChange={e => {
+                      const formatted = formatNumberWithCommas(e.target.value);
+                      setForm(p => ({ ...p, amount: parseFormattedNumber(formatted) }));
+                    }}
+                  />
                   {form.amount && parseFloat(form.amount) > 0 && activePPA && (
                     <p className={`text-[10px] font-medium ${
                       (activePPA.balanceOfAllotment - parseFloat(form.amount)) < 0 ? 'text-rose-600' : 'text-emerald-600'
@@ -701,12 +1322,68 @@ export default function BudgetReleasePage() {
                   )}
                 </div>
 
+                {/* PR Number */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">PR Number</Label>
+                  <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. PR-2025-001"
+                    value={form.prNumber} onChange={e => setForm(p => ({ ...p, prNumber: e.target.value }))} />
+                </div>
+
+                {/* OBR Number */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">OBR Number</Label>
+                  <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. OBR-2025-001"
+                    value={form.obrNumber} onChange={e => setForm(p => ({ ...p, obrNumber: e.target.value }))} />
+                </div>
+
+                {/* Date Released at PGO */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date Released at PGO</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="h-10 w-full justify-start text-left font-normal text-xs bg-white"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {form.dateReleased ? format(new Date(form.dateReleased), 'PPP') : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        captionLayout="dropdown-months"
+                        selected={form.dateReleased ? new Date(form.dateReleased) : undefined}
+                        onSelect={(date) => setForm(p => ({ ...p, dateReleased: date ? format(date, 'yyyy-MM-dd') : '' }))}
+                        fromYear={2020}
+                        toYear={2030}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* DV Amount */}
+                <div className="space-y-1.5">
+                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">DV Amount (?)</Label>
+                  <Input 
+                    className="h-10 text-base font-mono font-bold bg-white" 
+                    placeholder="0.00" 
+                    type="text"
+                    value={form.dvAmount ? formatNumberWithCommas(form.dvAmount) : ''}
+                    onChange={e => {
+                      const formatted = formatNumberWithCommas(e.target.value);
+                      setForm(p => ({ ...p, dvAmount: parseFormattedNumber(formatted) }));
+                    }}
+                  />
+                </div>
+
                 {/* Purpose / Particulars */}
                 <div className="space-y-1.5">
                   <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Purpose/Particulars *</Label>
                   <textarea
                     className="w-full h-28 text-xs border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 text-slate-700 bg-white"
-                    placeholder="Describe what this budget release is for…"
+                    placeholder="Describe what this budget release is for�"
                     value={form.purpose}
                     onChange={e => setForm(p => ({ ...p, purpose: e.target.value }))}
                   />
@@ -730,7 +1407,7 @@ export default function BudgetReleasePage() {
               {submitting ? (
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Saving…
+                  Saving�
                 </span>
               ) : (
                 <><CheckCircle2 className="w-3.5 h-3.5" /> Submit Entry</>
@@ -739,6 +1416,316 @@ export default function BudgetReleasePage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Sheet Selection Modal */}
+      <Dialog open={showImportModal} onOpenChange={setShowImportModal}>
+        <DialogContent className="w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-blue-600" /> Select Sheet to Import
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                <strong className="font-semibold">File:</strong> {selectedFile?.name}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Select which sheet contains the data you want to import
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-700">Available Sheets</Label>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {availableSheets.map(sheetName => (
+                  <button
+                    key={sheetName}
+                    onClick={() => setSelectedSheet(sheetName)}
+                    className={`w-full px-4 py-3 rounded-lg text-left transition-all ${
+                      selectedSheet === sheetName
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{sheetName}</span>
+                      {selectedSheet === sheetName && (
+                        <CheckCircle2 className="w-4 h-4" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowImportModal(false);
+                setSelectedFile(null);
+                setAvailableSheets([]);
+                setSelectedSheet('');
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+              disabled={importing}
+              className="text-xs h-8"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleImport}
+              disabled={importing || !selectedSheet}
+              className="text-xs h-8 gap-1.5 text-white"
+              style={{ background: '#1D4ED8' }}
+            >
+              {importing ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3 h-3" />
+                  Import {selectedSheet}
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Modal */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="w-full max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-blue-600" /> Edit Budget Entry
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">FPP Code</Label>
+                <Input
+                  value={editForm.fppCode}
+                  onChange={e => setEditForm(p => ({ ...p, fppCode: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter FPP Code"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Account Code</Label>
+                <Input
+                  value={editForm.accountCode}
+                  onChange={e => setEditForm(p => ({ ...p, accountCode: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter Account Code"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Payee</Label>
+                <Input
+                  value={editForm.payee}
+                  onChange={e => setEditForm(p => ({ ...p, payee: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter Payee"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Office</Label>
+                <Input
+                  value={editForm.office}
+                  onChange={e => setEditForm(p => ({ ...p, office: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter Office"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-slate-700">Particulars</Label>
+              <Input
+                value={editForm.particulars}
+                onChange={e => setEditForm(p => ({ ...p, particulars: e.target.value }))}
+                className="text-xs h-8 mt-1"
+                placeholder="Enter Particulars"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Amount</Label>
+                <Input
+                  type="text"
+                  value={editForm.amount ? formatNumberWithCommas(editForm.amount) : ''}
+                  onChange={e => {
+                    const formatted = formatNumberWithCommas(e.target.value);
+                    setEditForm(p => ({ ...p, amount: parseFormattedNumber(formatted) }));
+                  }}
+                  className="text-xs h-8 mt-1"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">DV Amount</Label>
+                <Input
+                  type="text"
+                  value={editForm.dvAmount ? formatNumberWithCommas(editForm.dvAmount) : ''}
+                  onChange={e => {
+                    const formatted = formatNumberWithCommas(e.target.value);
+                    setEditForm(p => ({ ...p, dvAmount: parseFormattedNumber(formatted) }));
+                  }}
+                  className="text-xs h-8 mt-1"
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">PR Number</Label>
+                <Input
+                  value={editForm.prNumber}
+                  onChange={e => setEditForm(p => ({ ...p, prNumber: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter PR Number"
+                />
+              </div>
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">OBR Number</Label>
+                <Input
+                  value={editForm.obrNumber}
+                  onChange={e => setEditForm(p => ({ ...p, obrNumber: e.target.value }))}
+                  className="text-xs h-8 mt-1"
+                  placeholder="Enter OBR Number"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-slate-700">Date Released</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-8 w-full justify-start text-left font-normal text-xs mt-1"
+                  >
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {editForm.dateReleased ? format(new Date(editForm.dateReleased), 'PPP') : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    captionLayout="dropdown-months"
+                    selected={editForm.dateReleased ? new Date(editForm.dateReleased) : undefined}
+                    onSelect={(date) => setEditForm(p => ({ ...p, dateReleased: date ? format(date, 'yyyy-MM-dd') : '' }))}
+                    fromYear={2020}
+                    toYear={2030}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditModal(false)}
+              disabled={updating}
+              className="text-xs h-8"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleUpdateEntry}
+              disabled={updating}
+              className="text-xs h-8 gap-1.5 text-white"
+              style={{ background: '#1D4ED8' }}
+            >
+              {updating ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3 h-3" />
+                  Update Entry
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm font-bold text-slate-800">
+              Delete Budget Entry?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600">
+              This action cannot be undone. This will permanently delete the budget entry from the database.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs h-8">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="text-xs h-8 bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              Delete Entry
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Import Batch Confirmation Dialog */}
+      <AlertDialog open={showDeleteBatchDialog} onOpenChange={setShowDeleteBatchDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              Delete Import Batch?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-slate-600">
+              {deletingBatchInfo && (
+                <>
+                  You are about to delete <span className="font-bold text-slate-800">{deletingBatchInfo.count} entries</span> from{' '}
+                  <span className="font-bold text-slate-800">"{deletingBatchInfo.sheetName}"</span>.
+                  <br /><br />
+                  This action cannot be undone. All entries from this import will be permanently removed from the database.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs h-8">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteBatch}
+              className="text-xs h-8 bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              Delete {deletingBatchInfo?.count} Entries
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
