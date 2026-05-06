@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Camera, User, Mail, Briefcase, Building2, IdCard, Shield, CheckCircle2, Pencil, X, Save } from 'lucide-react';
+import { Camera, User, Mail, Briefcase, Building2, IdCard, Shield, CheckCircle2, Pencil, X, Save, KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { sileo } from 'sileo';
 import { motion } from 'framer-motion';
+import { auth } from '@/backend/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 type EditableFields = {
   name: string;
@@ -21,6 +23,7 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar ?? null);
   const [uploading, setUploading] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -96,6 +99,30 @@ export default function ProfilePage() {
       employeeId: user?.employeeId ?? '',
     });
     setIsEditing(false);
+  };
+
+  const handlePasswordReset = async () => {
+    if (!user?.email) {
+      sileo.error({ title: 'No Email Found', description: 'Cannot send password reset email.' });
+      return;
+    }
+
+    setSendingReset(true);
+    try {
+      await sendPasswordResetEmail(auth, user.email);
+      sileo.success({ 
+        title: 'Password Reset Email Sent', 
+        description: `A password reset link has been sent to ${user.email}. Please check your inbox.` 
+      });
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      sileo.error({ 
+        title: 'Failed to Send Email', 
+        description: error.message || 'Could not send password reset email. Please try again.' 
+      });
+    } finally {
+      setSendingReset(false);
+    }
   };
 
   const editableFields: { key: keyof EditableFields; label: string; icon: React.ElementType; placeholder: string }[] = [
@@ -254,6 +281,44 @@ export default function ProfilePage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Security Card - Change Password */}
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}>
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="pb-3 border-b">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center">
+                <KeyRound className="w-4 h-4 text-rose-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold text-slate-800">Security</CardTitle>
+                <CardDescription className="text-xs mt-0.5">Manage your password and account security.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-slate-800 mb-1">Change Password</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Click the button to receive a password reset link via email at <strong className="text-slate-700">{user?.email}</strong>. 
+                  You'll be able to set a new password securely.
+                </p>
+              </div>
+              <Button 
+                size="sm" 
+                variant="outline"
+                className="gap-2 text-xs font-semibold border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-300 whitespace-nowrap"
+                onClick={handlePasswordReset}
+                disabled={sendingReset}
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                {sendingReset ? 'Sending...' : 'Send Reset Email'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
