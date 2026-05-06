@@ -117,10 +117,7 @@ const emptyForm = {
   accountCode: '',
   payee: '',
   purpose: '',
-  prNumber: '',
-  obrNumber: '',
   dateReleased: '',
-  dvAmount: '',
 };
 
 // â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -182,10 +179,7 @@ export default function BudgetReleasePage() {
     office: '',
     particulars: '',
     amount: '',
-    prNumber: '',
-    obrNumber: '',
     dateReleased: '',
-    dvAmount: '',
   });
   const [updating, setUpdating] = useState(false);
   
@@ -382,10 +376,7 @@ export default function BudgetReleasePage() {
         accountCode:   form.accountCode.trim(),
         payee:         form.payee.trim(),
         purpose:       form.purpose.trim(),
-        prNumber:      form.prNumber.trim(),
-        obrNumber:     form.obrNumber.trim(),
         dateReleased:  form.dateReleased ? new Date(form.dateReleased).toISOString() : '',
-        dvAmount:      parseFloat(form.dvAmount) || 0,
         submittedBy:   user?.name ?? user?.email ?? 'Unknown',
         submittedById: user?.id ?? '',
         office:        user?.office ?? '',
@@ -432,10 +423,7 @@ export default function BudgetReleasePage() {
       office: entry.department || '',
       particulars: entry.purpose || '',
       amount: entry.amount?.toString() || '',
-      prNumber: (entry as any).prNumber || '',
-      obrNumber: (entry as any).obrNumber || '',
       dateReleased: (entry as any).dateReleased ? new Date((entry as any).dateReleased).toISOString().split('T')[0] : '',
-      dvAmount: (entry as any).dvAmount?.toString() || '',
     });
     setShowEditModal(true);
   };
@@ -458,10 +446,7 @@ export default function BudgetReleasePage() {
         department: editForm.office.trim(),
         purpose: editForm.particulars.trim(),
         amount,
-        prNumber: editForm.prNumber.trim(),
-        obrNumber: editForm.obrNumber.trim(),
         dateReleased: editForm.dateReleased ? new Date(editForm.dateReleased).toISOString() : '',
-        dvAmount: parseFloat(editForm.dvAmount) || 0,
       };
 
       await updateDoc(doc(db, 'budget_releases', editingEntry.id), updateData);
@@ -524,9 +509,6 @@ export default function BudgetReleasePage() {
         const office = String(row['Office'] || row['office'] || user?.office || '').trim();
         const particulars = String(row['Particulars'] || row['particulars'] || row['Purpose'] || '').trim();
         const amount = parseFloat(String(row['Amount'] || row['amount'] || '0').replace(/[^0-9.-]/g, ''));
-        const prNumber = String(row['PR Number'] || row['pr number'] || row['PRNumber'] || '').trim();
-        const obrNumber = String(row['OBR Number'] || row['obr number'] || row['OBRNumber'] || '').trim();
-        const dvAmount = parseFloat(String(row['DV Amount'] || row['DV amount'] || row['dv amount'] || row['DVAmount'] || '0').replace(/[^0-9.-]/g, ''));
 
         // Parse dates - with cellDates: true, XLSX converts dates to Date objects
         const dateStr = row['Date'] || row['date'] || '';
@@ -608,10 +590,7 @@ export default function BudgetReleasePage() {
           department: office,
           purpose: particulars,
           amount,
-          prNumber,
-          obrNumber,
           dateReleased,
-          dvAmount,
           submittedBy: user?.name ?? user?.email ?? 'Unknown',
           submittedById: user?.id ?? '',
           office: user?.office ?? '',
@@ -867,10 +846,7 @@ export default function BudgetReleasePage() {
                     <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Office</th>
                     <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider">Particulars</th>
                     <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Amount</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">PR Number</th>
-                    <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">OBR Number</th>
                     <th className="py-2.5 px-4 text-left font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Date Released</th>
-                    <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">DV amount</th>
                     <th className="py-2.5 px-4 text-right font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
@@ -929,15 +905,10 @@ export default function BudgetReleasePage() {
                               <p className="truncate" title={r.purpose}>{r.purpose}</p>
                             </td>
                             <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
-                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).prNumber || '—'}</td>
-                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).obrNumber || '—'}</td>
                             <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
                               {(r as any).dateReleased 
                                 ? new Date((r as any).dateReleased).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                                 : '—'}
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
-                              {(r as any).dvAmount ? formatPeso((r as any).dvAmount) : '—'}
                             </td>
                             <td className="py-2.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-2">
@@ -998,15 +969,10 @@ export default function BudgetReleasePage() {
                               <p className="truncate" title={r.purpose}>{r.purpose}</p>
                             </td>
                             <td className="py-2.5 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">{formatPeso(r.amount)}</td>
-                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).prNumber || '—'}</td>
-                            <td className="py-2.5 px-4 text-slate-600 whitespace-nowrap">{(r as any).obrNumber || '—'}</td>
                             <td className="py-2.5 px-4 text-slate-400 whitespace-nowrap">
                               {(r as any).dateReleased 
                                 ? new Date((r as any).dateReleased).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                                 : '—'}
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
-                              {(r as any).dvAmount ? formatPeso((r as any).dvAmount) : '—'}
                             </td>
                             {canDelete && (
                               <td className="py-2.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
@@ -1322,20 +1288,6 @@ export default function BudgetReleasePage() {
                   )}
                 </div>
 
-                {/* PR Number */}
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">PR Number</Label>
-                  <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. PR-2025-001"
-                    value={form.prNumber} onChange={e => setForm(p => ({ ...p, prNumber: e.target.value }))} />
-                </div>
-
-                {/* OBR Number */}
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">OBR Number</Label>
-                  <Input className="h-10 text-xs font-mono bg-white" placeholder="e.g. OBR-2025-001"
-                    value={form.obrNumber} onChange={e => setForm(p => ({ ...p, obrNumber: e.target.value }))} />
-                </div>
-
                 {/* Date Released at PGO */}
                 <div className="space-y-1.5">
                   <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Date Released at PGO</Label>
@@ -1361,21 +1313,6 @@ export default function BudgetReleasePage() {
                       />
                     </PopoverContent>
                   </Popover>
-                </div>
-
-                {/* DV Amount */}
-                <div className="space-y-1.5">
-                  <Label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">DV Amount (?)</Label>
-                  <Input 
-                    className="h-10 text-base font-mono font-bold bg-white" 
-                    placeholder="0.00" 
-                    type="text"
-                    value={form.dvAmount ? formatNumberWithCommas(form.dvAmount) : ''}
-                    onChange={e => {
-                      const formatted = formatNumberWithCommas(e.target.value);
-                      setForm(p => ({ ...p, dvAmount: parseFormattedNumber(formatted) }));
-                    }}
-                  />
                 </div>
 
                 {/* Purpose / Particulars */}
@@ -1562,54 +1499,18 @@ export default function BudgetReleasePage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-semibold text-slate-700">Amount</Label>
-                <Input
-                  type="text"
-                  value={editForm.amount ? formatNumberWithCommas(editForm.amount) : ''}
-                  onChange={e => {
-                    const formatted = formatNumberWithCommas(e.target.value);
-                    setEditForm(p => ({ ...p, amount: parseFormattedNumber(formatted) }));
-                  }}
-                  className="text-xs h-8 mt-1"
-                  placeholder="0.00"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-semibold text-slate-700">DV Amount</Label>
-                <Input
-                  type="text"
-                  value={editForm.dvAmount ? formatNumberWithCommas(editForm.dvAmount) : ''}
-                  onChange={e => {
-                    const formatted = formatNumberWithCommas(e.target.value);
-                    setEditForm(p => ({ ...p, dvAmount: parseFormattedNumber(formatted) }));
-                  }}
-                  className="text-xs h-8 mt-1"
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs font-semibold text-slate-700">PR Number</Label>
-                <Input
-                  value={editForm.prNumber}
-                  onChange={e => setEditForm(p => ({ ...p, prNumber: e.target.value }))}
-                  className="text-xs h-8 mt-1"
-                  placeholder="Enter PR Number"
-                />
-              </div>
-              <div>
-                <Label className="text-xs font-semibold text-slate-700">OBR Number</Label>
-                <Input
-                  value={editForm.obrNumber}
-                  onChange={e => setEditForm(p => ({ ...p, obrNumber: e.target.value }))}
-                  className="text-xs h-8 mt-1"
-                  placeholder="Enter OBR Number"
-                />
-              </div>
+            <div>
+              <Label className="text-xs font-semibold text-slate-700">Amount</Label>
+              <Input
+                type="text"
+                value={editForm.amount ? formatNumberWithCommas(editForm.amount) : ''}
+                onChange={e => {
+                  const formatted = formatNumberWithCommas(e.target.value);
+                  setEditForm(p => ({ ...p, amount: parseFormattedNumber(formatted) }));
+                }}
+                className="text-xs h-8 mt-1"
+                placeholder="0.00"
+              />
             </div>
 
             <div>
