@@ -23,6 +23,13 @@ import {
   Shield,
   History,
   Wallet,
+  Briefcase,
+  Home,
+  Heart,
+  Wrench,
+  Hammer,
+  Sprout,
+  Monitor,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
@@ -43,12 +50,37 @@ interface NavSection {
 const adminNav: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+      { label: 'Home Page', path: '/admin/dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'Services',
+    items: [
+      {
+        label: 'Departments',
+        path: '/admin/services',
+        icon: Briefcase,
+        children: [
+          { label: 'Vice-Governor', path: '/admin/services/vice-governor', icon: Shield },
+          { label: 'Sangguniang Panlalawigan', path: '/admin/services/sangguniang-panlalawigan', icon: Users },
+          { label: 'Provincial Administrator', path: '/admin/services/provincial-administrator', icon: Building2 },
+          { label: 'Provincial Treasurer', path: '/admin/services/provincial-treasurer', icon: Wallet },
+          { label: 'Provincial Budget', path: '/admin/services/provincial-budget', icon: BarChart3 },
+          { label: 'Provincial Assessor', path: '/admin/services/provincial-assessor', icon: Home },
+          { label: 'Provincial Health', path: '/admin/services/provincial-health', icon: Heart },
+          { label: 'Provincial Engineering', path: '/admin/services/provincial-engineering', icon: Hammer },
+          { label: 'Provincial Agriculturist', path: '/admin/services/provincial-agriculture', icon: Sprout },
+          { label: 'Provincial Legal', path: '/admin/services/provincial-legal', icon: Scale },
+          { label: 'Provincial IT', path: '/admin/services/provincial-it', icon: Monitor },
+          { label: 'General Services', path: '/admin/services/general-services', icon: Wrench },
+        ],
+      },
     ],
   },
   {
     title: 'Budget Management',
     items: [
+      { label: 'Budget Dashboard', path: '/admin/budget/dashboard', icon: BarChart3 },
       {
         label: 'Budget',
         path: '/admin/budget',
@@ -94,12 +126,37 @@ const adminNav: NavSection[] = [
 const userNav: NavSection[] = [
   {
     items: [
-      { label: 'Dashboard', path: '/user/dashboard', icon: LayoutDashboard },
+      { label: 'Home Page', path: '/user/dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'Services',
+    items: [
+      {
+        label: 'Departments',
+        path: '/user/services',
+        icon: Briefcase,
+        children: [
+          { label: 'Vice-Governor', path: '/user/services/vice-governor', icon: Shield },
+          { label: 'Sangguniang Panlalawigan', path: '/user/services/sangguniang-panlalawigan', icon: Users },
+          { label: 'Provincial Administrator', path: '/user/services/provincial-administrator', icon: Building2 },
+          { label: 'Provincial Treasurer', path: '/user/services/provincial-treasurer', icon: Wallet },
+          { label: 'Provincial Budget', path: '/user/services/provincial-budget', icon: BarChart3 },
+          { label: 'Provincial Assessor', path: '/user/services/provincial-assessor', icon: Home },
+          { label: 'Provincial Health', path: '/user/services/provincial-health', icon: Heart },
+          { label: 'Provincial Engineering', path: '/user/services/provincial-engineering', icon: Hammer },
+          { label: 'Provincial Agriculturist', path: '/user/services/provincial-agriculture', icon: Sprout },
+          { label: 'Provincial Legal', path: '/user/services/provincial-legal', icon: Scale },
+          { label: 'Provincial IT', path: '/user/services/provincial-it', icon: Monitor },
+          { label: 'General Services', path: '/user/services/general-services', icon: Wrench },
+        ],
+      },
     ],
   },
   {
     title: 'Budget Overview',
     items: [
+      { label: 'Budget Dashboard', path: '/user/budget/dashboard', icon: BarChart3 },
       {
         label: 'Budget',
         path: '/user/budget',

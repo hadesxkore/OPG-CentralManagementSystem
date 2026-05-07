@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { LayoutList, Search, Download, ChevronDown, Filter, CheckCircle2 } from 'lucide-react';
+import { LayoutList, Search, Download, ChevronDown, Filter, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { sileo } from 'sileo';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -39,6 +39,8 @@ export default function UserPPAPage() {
   const [selectedFundFilter, setSelectedFundFilter] = useState<string>('All');
   // null = no restriction (show all), [] = no types assigned yet
   const [allowedFundTypes, setAllowedFundTypes] = useState<string[] | null>(null);
+  // Toggle to view all data or only user's scope
+  const [viewAllData, setViewAllData] = useState(false);
 
   // ── 1. Fetch this user's allowedFundTypes from Firestore (live source of truth) ──
   useEffect(() => {
@@ -74,10 +76,12 @@ export default function UserPPAPage() {
 
   const isAdmin = user?.role === 'admin';
   const hasRestriction = !isAdmin && allowedFundTypes !== null && allowedFundTypes.length > 0;
+  // Apply restriction only if user has restriction AND viewAllData is false
+  const shouldApplyRestriction = hasRestriction && !viewAllData;
 
   // ── 3. Build set of allowed FPP codes from ppaFundMapping for the user's fund types ──
   const allowedFppCodes = useMemo<Set<string>>(() => {
-    if (!hasRestriction || !allowedFundTypes) return new Set();
+    if (!shouldApplyRestriction || !allowedFundTypes) return new Set();
     const codes = new Set<string>();
     for (const ft of allowedFundTypes) {
       // Match against ppaFundMapping keys (case-insensitive)
@@ -91,12 +95,12 @@ export default function UserPPAPage() {
       }
     }
     return codes;
-  }, [hasRestriction, allowedFundTypes]);
+  }, [shouldApplyRestriction, allowedFundTypes]);
 
   // ── 4. Filter records by allowed FPP codes + keep headers that have visible children ──
   const baseRecords: PPARecord[] = useMemo(() => {
     if (!isImported) return [];
-    if (!hasRestriction) return importedRecords;
+    if (!shouldApplyRestriction) return importedRecords;
 
     const result: PPARecord[] = [];
     let pendingHeader: PPARecord | null = null;
@@ -126,7 +130,7 @@ export default function UserPPAPage() {
       }
     }
     return result;
-  }, [isImported, importedRecords, hasRestriction, allowedFppCodes, allowedFundTypes]);
+  }, [isImported, importedRecords, shouldApplyRestriction, allowedFppCodes, allowedFundTypes]);
 
   // ── 4. Reverse-map fppCode → fund type key using ppaFundMapping ───────────────
   const fppToFundType = useMemo(() => {
@@ -191,23 +195,143 @@ export default function UserPPAPage() {
   const { paged, page, totalPages, goTo } = usePagination(filtered, 25);
 
   const handleExport = () => {
-    const ws = XLSX.utils.aoa_to_sheet([
+    const title = [
       ['SUMMARY OF PROGRAM / PROJECT / ACTIVITY (PPA)'],
-      [`Office: ${user?.office || '—'}  |  Fund Types: ${allowedFundTypes?.join(', ') || 'All'}  |  Generated: ${new Date().toLocaleDateString()}`],
-      [],
-      ['FPP CODE', 'PROGRAM / PROJECT / ACTIVITY', 'APPROPRIATION', 'ALLOTMENT', 'OBLIGATION', 'BAL. OF APPROP.', 'BAL. OF ALLOTMENT', 'UTIL. RATE (%)'],
-      ...baseRecords.filter(r => !r.isHeader).map(r => [
-        r.fppCode, r.programProjectActivity,
-        r.appropriation, r.allotment, r.obligation,
-        r.balanceOfAppropriation, r.balanceOfAllotment,
-        r.utilizationRate / 100,
-      ]),
+      [`Generated on: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`],
+      [] // Blank separator
+    ];
+
+    const headers = [[
+      'FPP CODE',
+      'PROGRAM / PROJECT / ACTIVITY',
+      'APPROPRIATION',
+      'ALLOTMENT',
+      'OBLIGATION',
+      'BALANCE OF APPROPRIATION',
+      'BALANCE OF ALLOTMENT',
+      'UTILIZATION RATE (%)'
+    ]];
+
+    const dataRows = baseRecords.filter(r => !r.isHeader).map(r => [
+      r.fppCode,
+      r.programProjectActivity,
+      r.appropriation,
+      r.allotment,
+      r.obligation,
+      r.balanceOfAppropriation,
+      r.balanceOfAllotment,
+      r.utilizationRate / 100
     ]);
-    ws['!cols'] = [{ wch: 14 }, { wch: 45 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 20 }, { wch: 14 }];
+
+    const totalRow = [[
+      '',
+      'GRAND TOTAL',
+      totals.appropriation,
+      totals.allotment,
+      totals.obligation,
+      totals.balanceOfAppropriation,
+      totals.balanceOfAllotment,
+      totals.utilizationRate / 100
+    ]];
+
+    const wsData = [...title, ...headers, ...dataRows, ...totalRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Merge title cells
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
+    ];
+
+    // Set user-friendly column widths
+    ws['!cols'] = [
+      { wch: 15 }, // FPP
+      { wch: 45 }, // PPA
+      { wch: 18 }, // Approp
+      { wch: 18 }, // Allot
+      { wch: 18 }, // Oblig
+      { wch: 22 }, // Bal Approp
+      { wch: 22 }, // Bal Allot
+      { wch: 18 }  // Util
+    ];
+
+    // Apply granular styles and professional number formatting with color coding
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:H1');
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+        let cell = ws[cellRef];
+        if (!cell) continue;
+
+        cell.s = cell.s || {};
+
+        // Title row (Row 0)
+        if (R === 0 && C === 0) {
+          cell.s = {
+            font: { bold: true, sz: 14, color: { rgb: "1E3A8A" } },
+            alignment: { horizontal: "center", vertical: "center" }
+          };
+        }
+        
+        // Metadata / Date row (Row 1)
+        if (R === 1 && C === 0) {
+          cell.s = { font: { italic: true, color: { rgb: "64748B" } } };
+        }
+
+        // Header row (Row 3)
+        if (R === 3) {
+          cell.s = {
+            fill: { fgColor: { rgb: "1D4ED8" } },
+            font: { bold: true, color: { rgb: "FFFFFF" }, sz: 10 },
+            alignment: { horizontal: "center", vertical: "center" }
+          };
+        }
+
+        // Data Rows formatting (Row 4 to end-1)
+        if (R > 3 && R < range.e.r) {
+          // Numbers formatting (Appropriation to Bal of Allotment) => Cols 2 to 6
+          if (C >= 2 && C <= 6 && typeof cell.v === 'number') {
+            cell.z = '#,##0.00';
+            cell.s = { alignment: { horizontal: "right" } };
+          }
+          // Utilization Rate (%) => Col 7
+          if (C === 7 && typeof cell.v === 'number') {
+            cell.z = '0.00%';
+            let color = "059669"; // Emerald (good)
+            if (cell.v >= 0.75) color = "DC2626"; // Red (high)
+            else if (cell.v >= 0.50) color = "D97706"; // Amber (medium)
+            cell.s = { 
+              font: { color: { rgb: color }, bold: true },
+              alignment: { horizontal: "right" }
+            };
+          }
+        }
+
+        // Grand Total row (last row)
+        if (R === range.e.r) {
+          cell.s = {
+            fill: { fgColor: { rgb: "EFF6FF" } },
+            font: { bold: true, color: { rgb: "1E3A8A" }, sz: 11 },
+            border: { top: { style: 'medium', color: { rgb: "3B82F6" } } },
+            alignment: { vertical: "center" }
+          };
+          if (C >= 2 && C <= 6 && typeof cell.v === 'number') {
+            cell.z = '#,##0.00';
+            cell.s.alignment = { horizontal: "right", vertical: "center" };
+          }
+          if (C === 7 && typeof cell.v === 'number') {
+            cell.z = '0.00%';
+            cell.s.alignment = { horizontal: "right", vertical: "center" };
+          }
+        }
+      }
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'PPA Summary');
-    XLSX.writeFile(wb, `PPA_Summary_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    sileo.success({ title: 'Export ready', description: 'PPA Summary downloaded.' });
+    const fn = `PPA_Summary_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fn);
+    sileo.success({ title: 'Export ready', description: `${fn} has been downloaded` });
   };
 
   return (
@@ -215,13 +339,31 @@ export default function UserPPAPage() {
       <PageHeader
         title="Summary of Program / Project / Activity (PPA)"
         description={
-          hasRestriction
+          hasRestriction && !viewAllData
             ? `Showing FPP codes for: ${allowedFundTypes!.join(', ')}`
             : 'FPP-coded budget breakdown per program, project, and activity'
         }
         icon={LayoutList}
         actions={
           <div className="flex gap-2">
+            {hasRestriction && (
+              <Button
+                variant={viewAllData ? "default" : "outline"}
+                size="sm"
+                className="gap-2 text-xs h-8"
+                onClick={() => setViewAllData(!viewAllData)}
+              >
+                {viewAllData ? (
+                  <>
+                    <EyeOff className="w-3.5 h-3.5" /> View My Scope
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3.5 h-3.5" /> View All Data
+                  </>
+                )}
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="gap-2 text-xs h-8" onClick={handleExport}>
               <Download className="w-3.5 h-3.5" /> Export Excel
             </Button>
@@ -231,14 +373,34 @@ export default function UserPPAPage() {
 
       {/* Fund type scope badge */}
       {hasRestriction && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
-          <LayoutList className="w-4 h-4 text-blue-500 flex-shrink-0" />
-          <p className="text-xs text-blue-700">
-            <span className="font-semibold">Your Access Scope:</span>{' '}
-            Displaying FPP codes assigned to{' '}
-            {allowedFundTypes!.map(ft => (
-              <span key={ft} className="font-mono bg-blue-100 px-1.5 py-0.5 rounded mx-0.5 text-blue-800">{ft}</span>
-            ))}
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border ${
+          viewAllData 
+            ? 'bg-amber-50 border-amber-200' 
+            : 'bg-blue-50 border-blue-200'
+        }`}>
+          {viewAllData ? (
+            <Eye className="w-4 h-4 text-amber-500 flex-shrink-0" />
+          ) : (
+            <LayoutList className="w-4 h-4 text-blue-500 flex-shrink-0" />
+          )}
+          <p className={`text-xs ${viewAllData ? 'text-amber-700' : 'text-blue-700'}`}>
+            {viewAllData ? (
+              <>
+                <span className="font-semibold">Viewing All Data:</span>{' '}
+                Displaying all FPP codes across all fund types. Your assigned scope is{' '}
+                {allowedFundTypes!.map(ft => (
+                  <span key={ft} className="font-mono bg-amber-100 px-1.5 py-0.5 rounded mx-0.5 text-amber-800">{ft}</span>
+                ))}
+              </>
+            ) : (
+              <>
+                <span className="font-semibold">Your Access Scope:</span>{' '}
+                Displaying FPP codes assigned to{' '}
+                {allowedFundTypes!.map(ft => (
+                  <span key={ft} className="font-mono bg-blue-100 px-1.5 py-0.5 rounded mx-0.5 text-blue-800">{ft}</span>
+                ))}
+              </>
+            )}
           </p>
         </div>
       )}

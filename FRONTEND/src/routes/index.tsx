@@ -4,6 +4,19 @@ import { AppShell } from '@/components/layout/AppShell';
 
 // Pages
 import LoginPage from '@/pages/auth/LoginPage';
+import HomePage from '@/pages/shared/HomePage';
+import ViceGovernorPage from '@/pages/shared/ViceGovernorPage';
+import SangguniangPanlalawiganPage from '@/pages/shared/SangguniangPanlalawiganPage';
+import ProvincialAdministratorPage from '@/pages/shared/ProvincialAdministratorPage';
+import ProvincialTreasurerPage from '@/pages/shared/ProvincialTreasurerPage';
+import ProvincialBudgetPage from '@/pages/shared/ProvincialBudgetPage';
+import ProvincialAssessorPage from '@/pages/shared/ProvincialAssessorPage';
+import ProvincialHealthPage from '@/pages/shared/ProvincialHealthPage';
+import ProvincialEngineeringPage from '@/pages/shared/ProvincialEngineeringPage';
+import ProvincialAgriculturePage from '@/pages/shared/ProvincialAgriculturePage';
+import ProvincialLegalPage from '@/pages/shared/ProvincialLegalPage';
+import ProvincialITPage from '@/pages/shared/ProvincialITPage';
+import ProvincialGeneralServicesPage from '@/pages/shared/ProvincialGeneralServicesPage';
 import AdminDashboard from '@/pages/admin/AdminDashboard';
 import UserDashboard from '@/pages/user/UserDashboard';
 
@@ -65,7 +78,20 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/admin/dashboard', element: <AdminDashboard /> },
+          { path: '/admin/dashboard', element: <HomePage /> },
+          { path: '/admin/services/vice-governor', element: <ViceGovernorPage /> },
+          { path: '/admin/services/sangguniang-panlalawigan', element: <SangguniangPanlalawiganPage /> },
+          { path: '/admin/services/provincial-administrator', element: <ProvincialAdministratorPage /> },
+          { path: '/admin/services/provincial-treasurer', element: <ProvincialTreasurerPage /> },
+          { path: '/admin/services/provincial-budget', element: <ProvincialBudgetPage /> },
+          { path: '/admin/services/provincial-assessor', element: <ProvincialAssessorPage /> },
+          { path: '/admin/services/provincial-health', element: <ProvincialHealthPage /> },
+          { path: '/admin/services/provincial-engineering', element: <ProvincialEngineeringPage /> },
+          { path: '/admin/services/provincial-agriculture', element: <ProvincialAgriculturePage /> },
+          { path: '/admin/services/provincial-legal', element: <ProvincialLegalPage /> },
+          { path: '/admin/services/provincial-it', element: <ProvincialITPage /> },
+          { path: '/admin/services/general-services', element: <ProvincialGeneralServicesPage /> },
+          { path: '/admin/budget/dashboard', element: <AdminDashboard /> },
           { path: '/admin/budget/obligations', element: <AdminObligationsPage /> },
           { path: '/admin/budget/balances', element: <AdminBalancesPage /> },
           { path: '/admin/budget/statement', element: <AdminStatementPage /> },
@@ -96,7 +122,20 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/user/dashboard', element: <UserDashboard /> },
+          { path: '/user/dashboard', element: <HomePage /> },
+          { path: '/user/services/vice-governor', element: <ViceGovernorPage /> },
+          { path: '/user/services/sangguniang-panlalawigan', element: <SangguniangPanlalawiganPage /> },
+          { path: '/user/services/provincial-administrator', element: <ProvincialAdministratorPage /> },
+          { path: '/user/services/provincial-treasurer', element: <ProvincialTreasurerPage /> },
+          { path: '/user/services/provincial-budget', element: <ProvincialBudgetPage /> },
+          { path: '/user/services/provincial-assessor', element: <ProvincialAssessorPage /> },
+          { path: '/user/services/provincial-health', element: <ProvincialHealthPage /> },
+          { path: '/user/services/provincial-engineering', element: <ProvincialEngineeringPage /> },
+          { path: '/user/services/provincial-agriculture', element: <ProvincialAgriculturePage /> },
+          { path: '/user/services/provincial-legal', element: <ProvincialLegalPage /> },
+          { path: '/user/services/provincial-it', element: <ProvincialITPage /> },
+          { path: '/user/services/general-services', element: <ProvincialGeneralServicesPage /> },
+          { path: '/user/budget/dashboard', element: <UserDashboard /> },
           { path: '/user/budget/obligations', element: <UserObligationsPage /> },
           { path: '/user/budget/balances', element: <UserBalancesPage /> },
           { path: '/user/budget/statement', element: <UserStatementPage /> },
