@@ -30,6 +30,8 @@ import {
   Hammer,
   Sprout,
   Monitor,
+  Activity,
+  Construction,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
@@ -92,6 +94,19 @@ const adminNav: NavSection[] = [
           { label: 'Balances',      path: '/admin/budget/balances',  icon: Scale },
           { label: 'Budget Releases', path: '/admin/budget/releases', icon: Wallet },
           { label: 'History',       path: '/admin/budget/trash',     icon: History },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Monitoring',
+    items: [
+      {
+        label: 'Monitoring',
+        path: '/admin/monitoring',
+        icon: Activity,
+        children: [
+          { label: 'Infrastructure', path: '/admin/monitoring/infrastructure', icon: Construction },
         ],
       },
     ],
@@ -168,6 +183,19 @@ const userNav: NavSection[] = [
           { label: 'Balances',      path: '/user/budget/balances',   icon: Scale },
           { label: 'Budget Releases', path: '/user/budget/releases',  icon: Wallet },
           { label: 'History',       path: '/user/budget/trash',      icon: History },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Monitoring',
+    items: [
+      {
+        label: 'Monitoring',
+        path: '/user/monitoring',
+        icon: Activity,
+        children: [
+          { label: 'Infrastructure', path: '/user/monitoring/infrastructure', icon: Construction },
         ],
       },
     ],
@@ -294,7 +322,12 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle, mobile = false }: SidebarProps) {
   const { user } = useAuthStore();
-  const navSections = user?.role === 'admin' ? adminNav : user?.role === 'pops' ? popsNav : userNav;
+  let navSections = user?.role === 'admin' ? adminNav : user?.role === 'pops' ? popsNav : userNav;
+
+  // Filter out Monitoring section if user is not "kath@gmail.com"
+  if (user?.email !== 'kath@gmail.com') {
+    navSections = navSections.filter(section => section.title !== 'Monitoring');
+  }
 
   // On mobile: always show full sidebar (not collapsed)
   const isCollapsed = mobile ? false : collapsed;

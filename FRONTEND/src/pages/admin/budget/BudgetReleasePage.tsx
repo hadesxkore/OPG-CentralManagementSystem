@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   PlusCircle, Wallet, CheckCircle2, AlertTriangle,
-  Trash2, Search, FileOutput, Upload, FileSpreadsheet, Pencil, CalendarIcon,
+  Trash2, Search, FileOutput, Upload, FileSpreadsheet, Pencil, CalendarIcon, Download,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -47,7 +47,7 @@ import { formatPeso } from '@/data/mockData';
 import { ppaFundMapping } from '@/data/ppaFundMapping';
 import type { BudgetRelease, StatementRecord, PPARecord } from '@/types';
 import { ChevronsUpDown } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import { format } from 'date-fns';
 
 // â”€â”€ Color palette cycling for dynamically-detected fund types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -431,11 +431,8 @@ export default function BudgetReleasePage() {
   const handleUpdateEntry = async () => {
     if (!editingEntry) return;
 
-    const amount = parseFloat(editForm.amount);
-    if (!editForm.fppCode.trim() || !amount || amount <= 0 || !editForm.particulars.trim()) {
-      sileo.error({ title: 'Validation Error', description: 'FPP Code, Amount, and Particulars are required.' });
-      return;
-    }
+    // All fields are now optional - no validation required
+    const amount = parseFloat(editForm.amount) || 0;
 
     setUpdating(true);
     try {
@@ -681,6 +678,273 @@ export default function BudgetReleasePage() {
     );
   }, [releases]);
 
+  // Export to Excel functionality
+  const handleExportExcel = () => {
+    console.log('Export button clicked!');
+    console.log('Displayed entries:', displayed.length);
+    
+    if (displayed.length === 0) {
+      sileo.error({ title: 'No Data', description: 'No entries to export.' });
+      return;
+    }
+
+    try {
+      // Create professional title section
+      const currentDate = new Date().toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      
+      const title = [
+        ['BUDGET RELEASE TRACKER'],
+        [`Provincial Government of Bataan - ${user?.office || 'Budget Office'}`],
+        [`Generated on: ${currentDate} | Total Entries: ${displayed.length}`],
+        [], // Empty row for spacing
+      ];
+
+      // Professional headers with better descriptions
+      const headers = [
+        ['Entry Date', 'FPP Code', 'Account Code', 'Payee/Supplier', 'Office/Department', 'Purpose/Particulars', 'Amount (₱)', 'Date Released']
+      ];
+
+      // Create data rows with better formatting
+      const dataRows = displayed.map((entry) => [
+        new Date(entry.createdAt).toLocaleDateString('en-US', { 
+          month: '2-digit', 
+          day: '2-digit', 
+          year: 'numeric' 
+        }),
+        entry.fppCode || '—',
+        entry.accountCode || '—',
+        entry.payee || '—',
+        entry.department || '—',
+        entry.purpose || '—',
+        entry.amount || 0,
+        (entry as any).dateReleased 
+          ? new Date((entry as any).dateReleased).toLocaleDateString('en-US', { 
+              month: '2-digit', 
+              day: '2-digit', 
+              year: 'numeric' 
+            })
+          : '—'
+      ]);
+
+      // Create summary section
+      const totalAmount = displayed.reduce((sum, entry) => sum + (entry.amount || 0), 0);
+      const avgAmount = totalAmount / displayed.length;
+      
+      const summaryRows = [
+        [], // Empty row
+        ['SUMMARY REPORT'],
+        ['Total Entries:', displayed.length, '', '', '', '', '', ''],
+        ['Total Amount:', totalAmount, '', '', '', '', '', ''],
+        ['Average Amount:', avgAmount, '', '', '', '', '', ''],
+        ['Highest Amount:', Math.max(...displayed.map(e => e.amount || 0)), '', '', '', '', '', ''],
+        ['Lowest Amount:', Math.min(...displayed.map(e => e.amount || 0)), '', '', '', '', '', ''],
+      ];
+
+      const wsData = [...title, ...headers, ...dataRows, ...summaryRows];
+      console.log('Creating worksheet with data:', wsData.length, 'rows');
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+      // Enhanced merging for professional layout
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // Main title
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }, // Subtitle
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }, // Date info
+        { s: { r: dataRows.length + 5, c: 0 }, e: { r: dataRows.length + 5, c: 7 } }, // Summary title
+      ];
+
+      // Auto-sizing columns with optimal widths
+      const colWidths = [
+        { wch: 12 },  // Entry Date
+        { wch: 16 },  // FPP Code
+        { wch: 16 },  // Account Code
+        { wch: 25 },  // Payee/Supplier
+        { wch: 22 },  // Office/Department
+        { wch: 35 },  // Purpose/Particulars
+        { wch: 18 },  // Amount
+        { wch: 14 },  // Date Released
+      ];
+
+      // Calculate dynamic widths based on content
+      displayed.forEach(entry => {
+        const fppLen = (entry.fppCode || '').length;
+        const accountLen = (entry.accountCode || '').length;
+        const payeeLen = (entry.payee || '').length;
+        const deptLen = (entry.department || '').length;
+        const purposeLen = (entry.purpose || '').length;
+
+        if (fppLen > colWidths[1].wch) colWidths[1].wch = Math.min(fppLen + 2, 20);
+        if (accountLen > colWidths[2].wch) colWidths[2].wch = Math.min(accountLen + 2, 20);
+        if (payeeLen > colWidths[3].wch) colWidths[3].wch = Math.min(payeeLen + 2, 30);
+        if (deptLen > colWidths[4].wch) colWidths[4].wch = Math.min(deptLen + 2, 25);
+        if (purposeLen > colWidths[5].wch) colWidths[5].wch = Math.min(purposeLen + 2, 40);
+      });
+
+      ws['!cols'] = colWidths;
+
+      // Enhanced styling with modern design
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:H1');
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+          let cell = ws[cellRef];
+          if (!cell) continue;
+
+          // Main title styling
+          if (R === 0) {
+            cell.s = {
+              font: { bold: true, sz: 18, color: { rgb: 'FFFFFF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: '1E40AF' } }, // Deep blue
+              border: {
+                top: { style: 'thick', color: { rgb: '1E40AF' } },
+                bottom: { style: 'thick', color: { rgb: '1E40AF' } },
+                left: { style: 'thick', color: { rgb: '1E40AF' } },
+                right: { style: 'thick', color: { rgb: '1E40AF' } }
+              }
+            };
+          }
+          // Subtitle styling
+          else if (R === 1) {
+            cell.s = {
+              font: { bold: true, sz: 12, color: { rgb: '1E40AF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: 'EFF6FF' } },
+              border: {
+                top: { style: 'thin', color: { rgb: '93C5FD' } },
+                bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+                left: { style: 'thin', color: { rgb: '93C5FD' } },
+                right: { style: 'thin', color: { rgb: '93C5FD' } }
+              }
+            };
+          }
+          // Date info styling
+          else if (R === 2) {
+            cell.s = {
+              font: { sz: 10, color: { rgb: '64748B' }, italic: true },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: 'F8FAFC' } }
+            };
+          }
+          // Header row styling
+          else if (R === 4) {
+            cell.s = {
+              font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: '3B82F6' } }, // Blue
+              border: {
+                top: { style: 'medium', color: { rgb: '1E40AF' } },
+                bottom: { style: 'medium', color: { rgb: '1E40AF' } },
+                left: { style: 'thin', color: { rgb: '1E40AF' } },
+                right: { style: 'thin', color: { rgb: '1E40AF' } }
+              }
+            };
+          }
+          // Data rows styling with alternating colors
+          else if (R > 4 && R < dataRows.length + 5) {
+            const isEvenRow = (R - 5) % 2 === 0;
+            cell.s = {
+              font: { sz: 10, color: { rgb: '1F2937' } },
+              alignment: { 
+                horizontal: C === 6 ? 'right' : 'left', 
+                vertical: 'center' 
+              },
+              fill: { fgColor: { rgb: isEvenRow ? 'FFFFFF' : 'F9FAFB' } },
+              border: {
+                top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+              }
+            };
+            
+            // Amount column special formatting
+            if (C === 6 && typeof cell.v === 'number') {
+              cell.z = '₱#,##0.00';
+              cell.s.font = { 
+                ...cell.s.font, 
+                bold: true, 
+                color: { rgb: cell.v > 100000 ? 'DC2626' : '059669' } // Red for large amounts, green for smaller
+              };
+            }
+          }
+          // Summary section styling
+          else if (R >= dataRows.length + 5) {
+            if (R === dataRows.length + 5) {
+              // Summary title
+              cell.s = {
+                font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
+                alignment: { horizontal: 'center', vertical: 'center' },
+                fill: { fgColor: { rgb: '059669' } }, // Green
+                border: {
+                  top: { style: 'thick', color: { rgb: '059669' } },
+                  bottom: { style: 'thick', color: { rgb: '059669' } },
+                  left: { style: 'thick', color: { rgb: '059669' } },
+                  right: { style: 'thick', color: { rgb: '059669' } }
+                }
+              };
+            } else {
+              // Summary data
+              cell.s = {
+                font: { bold: C === 1, sz: 10, color: { rgb: '1F2937' } },
+                alignment: { horizontal: C === 1 ? 'right' : 'left', vertical: 'center' },
+                fill: { fgColor: { rgb: 'F0FDF4' } },
+                border: {
+                  top: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  bottom: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  left: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  right: { style: 'thin', color: { rgb: 'BBF7D0' } }
+                }
+              };
+              
+              // Format numbers in summary
+              if (C === 1 && typeof cell.v === 'number') {
+                cell.z = cell.v > 1 ? '₱#,##0.00' : '#,##0';
+              }
+            }
+          }
+        }
+      }
+
+      // Create workbook and export
+      console.log('Creating workbook...');
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Budget Releases');
+      
+      // Add metadata
+      wb.Props = {
+        Title: 'Budget Release Tracker',
+        Subject: 'Budget Release Report',
+        Author: user?.name || 'Budget System',
+        CreatedDate: new Date()
+      };
+
+      const fileName = `Budget_Releases_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 5).replace(':', '')}.xlsx`;
+      console.log('Writing file:', fileName);
+      
+      XLSX.writeFile(wb, fileName);
+
+      sileo.success({ 
+        title: 'Export Successful! 📊', 
+        description: `${fileName} downloaded with ${displayed.length} entries and summary report.` 
+      });
+      
+      console.log('Export completed successfully!');
+      
+    } catch (error) {
+      console.error('Export error:', error);
+      sileo.error({ 
+        title: 'Export Failed', 
+        description: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
+    }
+  };
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
       Loading budget tracker...
@@ -780,11 +1044,19 @@ export default function BudgetReleasePage() {
               </div>
               
               {/* Total Amount Display */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-4 py-2.5">
-                <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider mb-0.5">Total Amount</p>
-                <p className="text-xl font-bold font-mono text-blue-900">
-                  {formatPeso(displayed.reduce((sum, entry) => sum + (entry.amount || 0), 0))}
-                </p>
+              <div className="flex gap-3">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-4 py-2.5">
+                  <p className="text-[10px] font-semibold text-blue-600 uppercase tracking-wider mb-0.5">Total ABC Amount</p>
+                  <p className="text-xl font-bold font-mono text-blue-900">
+                    {formatPeso(displayed.reduce((sum, entry) => sum + (entry.amount || 0), 0))}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+                  <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-0.5">Total Bid Amount</p>
+                  <p className="text-xl font-bold font-mono text-emerald-900">
+                    {formatPeso(displayed.reduce((sum, entry) => sum + (entry.amount || 0), 0))}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -813,6 +1085,15 @@ export default function BudgetReleasePage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                   <Input placeholder="Search..." className="pl-9 h-8 text-xs" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
+                
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="gap-2 text-xs h-8 whitespace-nowrap" 
+                  onClick={handleExportExcel}
+                >
+                  <Download className="w-3.5 h-3.5" /> Export Excel
+                </Button>
                 
                 <Button 
                   size="sm" 

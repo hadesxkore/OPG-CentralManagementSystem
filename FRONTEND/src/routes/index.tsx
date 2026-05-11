@@ -27,6 +27,7 @@ import AdminStatementPage from '@/pages/admin/budget/StatementPage';
 import AdminPPAPage from '@/pages/admin/budget/PPAPage';
 import BudgetTrashPage from '@/pages/admin/budget/BudgetTrashPage';
 import BudgetReleasePage from '@/pages/admin/budget/BudgetReleasePage';
+import AdminInfrastructureMonitoringPage from '@/pages/admin/monitoring/InfrastructureMonitoringPage';
 import UploadCenterPage from '@/pages/admin/upload/UploadCenterPage';
 import RequestManagementPage from '@/pages/admin/requests/RequestManagementPage';
 import UserManagementPage from '@/pages/admin/users/UserManagementPage';
@@ -38,6 +39,7 @@ import UserObligationsPage from '@/pages/user/budget/ObligationsPage';
 import UserBalancesPage from '@/pages/user/budget/BalancesPage';
 import UserStatementPage from '@/pages/user/budget/StatementPage';
 import UserPPAPage from '@/pages/user/budget/PPAPage';
+import UserInfrastructureMonitoringPage from '@/pages/user/monitoring/InfrastructureMonitoringPage';
 
 
 // POPS Division
@@ -98,6 +100,7 @@ export const router = createBrowserRouter([
           { path: '/admin/budget/ppa', element: <AdminPPAPage /> },
           { path: '/admin/budget/trash', element: <BudgetTrashPage /> },
           { path: '/admin/budget/releases', element: <BudgetReleasePage /> },
+          { path: '/admin/monitoring/infrastructure', element: <AdminInfrastructureMonitoringPage /> },
           { path: '/admin/upload', element: <UploadCenterPage /> },
           { path: '/admin/requests', element: <RequestManagementPage /> },
           { path: '/admin/requests/all', element: <RequestManagementPage /> },
@@ -142,6 +145,7 @@ export const router = createBrowserRouter([
           { path: '/user/budget/ppa', element: <UserPPAPage /> },
           { path: '/user/budget/trash', element: <BudgetTrashPage /> },
           { path: '/user/budget/releases', element: <BudgetReleasePage /> },
+          { path: '/user/monitoring/infrastructure', element: <UserInfrastructureMonitoringPage /> },
           { path: '/user/profile', element: <ProfilePage /> },
           { path: '/user/settings', element: <SettingsPage /> },
           { path: '/user/*', element: <Navigate to="/user/dashboard" replace /> },

@@ -31,6 +31,7 @@ export default function UserStatementPage() {
   const { importedRecords, isImported, setImportedData, clearImport } = useStatementStore();
   const [search, setSearch] = useState('');
   const [selectedFundFilter, setSelectedFundFilter] = useState<string>('All');
+  const [viewAllData, setViewAllData] = useState(false); // Toggle for viewing all data
   // null = no restriction (show all), string[] = specific fund types
   const [allowedFundTypes, setAllowedFundTypes] = useState<string[] | null>(null);
 
@@ -44,6 +45,11 @@ export default function UserStatementPage() {
       }
     });
   }, [user?.id]);
+
+  // ── Reset fund filter when toggling between view modes ──
+  useEffect(() => {
+    setSelectedFundFilter('All');
+  }, [viewAllData]);
 
   // ── 2. Live Firestore listener for statement data (read-only) ───────────────
   useEffect(() => {
@@ -67,13 +73,16 @@ export default function UserStatementPage() {
 
   const isAdmin = user?.role === 'admin';
   const hasRestriction = !isAdmin && allowedFundTypes !== null && allowedFundTypes.length > 0;
+  
+  // Apply restriction only if user hasn't toggled to view all data
+  const shouldApplyRestriction = hasRestriction && !viewAllData;
 
   // ── 3. Filter statement records directly by expensesClassification ──────────
   // Statement data is FLAT (no isHeader rows) — each row is e.g. "A. PS", "G. 20%", "H. 5%".
   // Match each row against allowedFundTypes bidirectionally (same as BudgetReleasePage).
   const baseRecords: StatementRecord[] = useMemo(() => {
     if (!isImported) return [];
-    if (!hasRestriction) return importedRecords;
+    if (!shouldApplyRestriction) return importedRecords;
 
     return importedRecords.filter(r => {
       const rawLabel = (r.expensesClassification ?? '').trim();
@@ -89,12 +98,14 @@ export default function UserStatementPage() {
         return l.includes(a) || a.includes(l) || s.includes(a) || a.includes(s);
       });
     });
-  }, [isImported, importedRecords, hasRestriction, allowedFundTypes]);
+  }, [isImported, importedRecords, shouldApplyRestriction, allowedFundTypes]);
 
-  // ── 4. Build dropdown options: strip "X." prefix so "B. MOOE"→"MOOE", "G. 20%"→"20%" ──
+  // ── 4. Build dropdown options: Always use importedRecords when viewAllData is true ──
   const fundTypeOptions = useMemo(() => {
     const seen = new Set<string>();
-    for (const r of baseRecords) {
+    // Always use all imported records when viewing all data
+    const sourceRecords = viewAllData ? importedRecords : baseRecords;
+    for (const r of sourceRecords) {
       if (r.isHeader) continue;
       const raw = (r.expensesClassification ?? '').trim();
       const parts = raw.split('.');
@@ -103,25 +114,40 @@ export default function UserStatementPage() {
       if (short) seen.add(short);
     }
     return Array.from(seen);
-  }, [baseRecords]);
+  }, [baseRecords, importedRecords, viewAllData]);
 
   // ── 5. Filter records by the selected short-label fund type ──────────────────
+  // Use the correct source based on viewAllData toggle
   const fundFiltered = useMemo(() => {
-    if (selectedFundFilter === 'All') return baseRecords;
-    return baseRecords.filter(r => {
+    const sourceRecords = viewAllData ? importedRecords : baseRecords;
+    if (selectedFundFilter === 'All') return sourceRecords;
+    return sourceRecords.filter(r => {
       if (r.isHeader) return false;
       const raw = (r.expensesClassification ?? '').trim();
       const parts = raw.split('.');
       const short = parts.length > 1 ? parts.slice(1).join('.').trim() : raw;
       return short === selectedFundFilter;
     });
-  }, [baseRecords, selectedFundFilter]);
+  }, [baseRecords, importedRecords, selectedFundFilter, viewAllData]);
 
   const totals = getStatementTotal(fundFiltered.filter(r => !r.isHeader));
 
   const filtered = fundFiltered.filter(r =>
     r.expensesClassification.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Debug logging
+  console.log('🔍 Statement Debug:', {
+    viewAllData,
+    hasRestriction,
+    shouldApplyRestriction,
+    importedRecordsCount: importedRecords.length,
+    baseRecordsCount: baseRecords.length,
+    fundFilteredCount: fundFiltered.length,
+    filteredCount: filtered.length,
+    selectedFundFilter,
+    fundTypeOptionsCount: fundTypeOptions.length
+  });
 
   const handleExport = () => {
     const ws = XLSX.utils.aoa_to_sheet([
@@ -148,7 +174,7 @@ export default function UserStatementPage() {
       <PageHeader
         title="Statement of Appropriations, Allotments, Obligations & Balances"
         description={
-          hasRestriction
+          hasRestriction && !viewAllData
             ? `Showing sections for: ${allowedFundTypes!.join(', ')}`
             : 'Per-office breakdown by expense classification'
         }
@@ -163,7 +189,7 @@ export default function UserStatementPage() {
       />
 
       {/* Access scope badge */}
-      {hasRestriction && (
+      {hasRestriction && !viewAllData && (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 border border-blue-200">
           <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
           <p className="text-xs text-blue-700">
@@ -172,6 +198,17 @@ export default function UserStatementPage() {
             {allowedFundTypes!.map(ft => (
               <span key={ft} className="font-mono bg-blue-100 px-1.5 py-0.5 rounded mx-0.5 text-blue-800">{ft}</span>
             ))}
+          </p>
+        </div>
+      )}
+
+      {/* Viewing all data badge */}
+      {hasRestriction && viewAllData && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-50 border border-green-200">
+          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+          <p className="text-xs text-green-700">
+            <span className="font-semibold">Viewing All Data:</span>{' '}
+            You are currently viewing the complete statement (all fund types). Click "View My Data" to return to your assigned scope.
           </p>
         </div>
       )}
@@ -208,6 +245,19 @@ export default function UserStatementPage() {
                 )}
               </span>
             </CardTitle>
+
+            {/* View All Data Toggle Button - Only for users with restrictions */}
+            {hasRestriction && (
+              <Button
+                variant={viewAllData ? "default" : "outline"}
+                size="sm"
+                className="gap-2 text-xs h-8"
+                onClick={() => setViewAllData(!viewAllData)}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                {viewAllData ? 'My Data' : 'All Data'}
+              </Button>
+            )}
 
             {/* Fund Type Filter Dropdown */}
             <DropdownMenu>
