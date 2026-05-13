@@ -288,7 +288,7 @@ export default function InfrastructureMonitoringPage() {
     setIsEditDialogOpen(true);
   };
 
-  // Export to Excel functionality (same as admin version)
+  // Export to Excel functionality with professional styling
   const handleExportExcel = () => {
     if (filtered.length === 0) {
       sileo.error({ title: 'No Data', description: 'No projects to export.' });
@@ -367,6 +367,8 @@ export default function InfrastructureMonitoringPage() {
         ['Cancelled Projects:', stats.cancelled, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
         ['Total ABC Amount:', stats.totalAbcAmount, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
         ['Total Bid Amount:', stats.totalBidAmount, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+        ['Average ABC Amount:', stats.totalAbcAmount / filtered.length, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+        ['Average Bid Amount:', stats.totalBidAmount / filtered.length, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
       ];
 
       const wsData = [...title, ...headers, ...dataRows, ...summaryRows];
@@ -381,22 +383,202 @@ export default function InfrastructureMonitoringPage() {
       ];
 
       // Auto-sizing columns with optimal widths
-      ws['!cols'] = [
-        { wch: 12 }, { wch: 35 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, 
-        { wch: 25 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, 
-        { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }
+      const colWidths = [
+        { wch: 12 },  // Date of Bidding
+        { wch: 35 },  // Project Title
+        { wch: 12 },  // Source of Fund
+        { wch: 15 },  // ABC Amount
+        { wch: 15 },  // Bid Amount
+        { wch: 12 },  // Calendar Days
+        { wch: 25 },  // Contractor
+        { wch: 12 },  // Contract Date
+        { wch: 12 },  // Notice to Proceed
+        { wch: 12 },  // % Completion
+        { wch: 12 },  // Expiry Date
+        { wch: 12 },  // Slippage
+        { wch: 12 },  // PEO Remarks
+        { wch: 25 },  // Accounting Remarks
+        { wch: 12 },  // Release Date
+        { wch: 12 },  // Advice Date
+        { wch: 12 },  // Payment Date
+        { wch: 12 },  // Payment Status
       ];
+
+      // Calculate dynamic widths based on content
+      filtered.forEach(project => {
+        const titleLen = (project.projectTitle || '').length;
+        const contractorLen = (project.contractor || '').length;
+        const remarksLen = (project.accountingRemarks || '').length;
+
+        if (titleLen > colWidths[1].wch) colWidths[1].wch = Math.min(titleLen + 2, 45);
+        if (contractorLen > colWidths[6].wch) colWidths[6].wch = Math.min(contractorLen + 2, 30);
+        if (remarksLen > colWidths[13].wch) colWidths[13].wch = Math.min(remarksLen + 2, 35);
+      });
+
+      ws['!cols'] = colWidths;
+
+      // Enhanced styling with modern design
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:R1');
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ c: C, r: R });
+          let cell = ws[cellRef];
+          if (!cell) continue;
+
+          // Main title styling
+          if (R === 0) {
+            cell.s = {
+              font: { bold: true, sz: 18, color: { rgb: 'FFFFFF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: '1E40AF' } }, // Deep blue
+              border: {
+                top: { style: 'thick', color: { rgb: '1E40AF' } },
+                bottom: { style: 'thick', color: { rgb: '1E40AF' } },
+                left: { style: 'thick', color: { rgb: '1E40AF' } },
+                right: { style: 'thick', color: { rgb: '1E40AF' } }
+              }
+            };
+          }
+          // Subtitle styling
+          else if (R === 1) {
+            cell.s = {
+              font: { bold: true, sz: 12, color: { rgb: '1E40AF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: 'EFF6FF' } },
+              border: {
+                top: { style: 'thin', color: { rgb: '93C5FD' } },
+                bottom: { style: 'thin', color: { rgb: '93C5FD' } },
+                left: { style: 'thin', color: { rgb: '93C5FD' } },
+                right: { style: 'thin', color: { rgb: '93C5FD' } }
+              }
+            };
+          }
+          // Date info styling
+          else if (R === 2) {
+            cell.s = {
+              font: { sz: 10, color: { rgb: '64748B' }, italic: true },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: 'F8FAFC' } }
+            };
+          }
+          // Header row styling
+          else if (R === 4) {
+            cell.s = {
+              font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
+              alignment: { horizontal: 'center', vertical: 'center' },
+              fill: { fgColor: { rgb: '3B82F6' } }, // Blue
+              border: {
+                top: { style: 'medium', color: { rgb: '1E40AF' } },
+                bottom: { style: 'medium', color: { rgb: '1E40AF' } },
+                left: { style: 'thin', color: { rgb: '1E40AF' } },
+                right: { style: 'thin', color: { rgb: '1E40AF' } }
+              }
+            };
+          }
+          // Data rows styling with alternating colors
+          else if (R > 4 && R < dataRows.length + 5) {
+            const isEvenRow = (R - 5) % 2 === 0;
+            cell.s = {
+              font: { sz: 9, color: { rgb: '1F2937' } },
+              alignment: { 
+                horizontal: (C === 3 || C === 4 || C === 5 || C === 9 || C === 11) ? 'right' : 'left', 
+                vertical: 'center' 
+              },
+              fill: { fgColor: { rgb: isEvenRow ? 'FFFFFF' : 'F9FAFB' } },
+              border: {
+                top: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                bottom: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                left: { style: 'thin', color: { rgb: 'E5E7EB' } },
+                right: { style: 'thin', color: { rgb: 'E5E7EB' } }
+              }
+            };
+            
+            // Special formatting for different columns
+            if ((C === 3 || C === 4) && typeof cell.v === 'number') {
+              // ABC and Bid Amount columns
+              cell.z = '₱#,##0.00';
+              cell.s.font = { 
+                ...cell.s.font, 
+                bold: true, 
+                color: { rgb: C === 3 ? '7C3AED' : '059669' } // Purple for ABC, Green for Bid
+              };
+            } else if (C === 9 && typeof cell.v === 'number') {
+              // Percentage completion
+              cell.z = '0"%"';
+              cell.s.font = { 
+                ...cell.s.font, 
+                bold: true, 
+                color: { rgb: cell.v >= 100 ? '059669' : cell.v >= 50 ? 'F59E0B' : 'DC2626' }
+              };
+            } else if (C === 11 && typeof cell.v === 'number') {
+              // Slippage days
+              cell.s.font = { 
+                ...cell.s.font, 
+                bold: true, 
+                color: { rgb: cell.v > 0 ? 'DC2626' : cell.v < 0 ? '059669' : '6B7280' }
+              };
+            }
+          }
+          // Summary section styling
+          else if (R >= dataRows.length + 5) {
+            if (R === dataRows.length + 5) {
+              // Summary title
+              cell.s = {
+                font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } },
+                alignment: { horizontal: 'center', vertical: 'center' },
+                fill: { fgColor: { rgb: '059669' } }, // Green
+                border: {
+                  top: { style: 'thick', color: { rgb: '059669' } },
+                  bottom: { style: 'thick', color: { rgb: '059669' } },
+                  left: { style: 'thick', color: { rgb: '059669' } },
+                  right: { style: 'thick', color: { rgb: '059669' } }
+                }
+              };
+            } else {
+              // Summary data
+              cell.s = {
+                font: { bold: C === 1, sz: 10, color: { rgb: '1F2937' } },
+                alignment: { horizontal: C === 1 ? 'right' : 'left', vertical: 'center' },
+                fill: { fgColor: { rgb: 'F0FDF4' } },
+                border: {
+                  top: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  bottom: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  left: { style: 'thin', color: { rgb: 'BBF7D0' } },
+                  right: { style: 'thin', color: { rgb: 'BBF7D0' } }
+                }
+              };
+              
+              // Format numbers in summary
+              if (C === 1 && typeof cell.v === 'number') {
+                if (cell.v > 1000) {
+                  cell.z = '₱#,##0.00';
+                } else {
+                  cell.z = '#,##0';
+                }
+              }
+            }
+          }
+        }
+      }
 
       // Create workbook and export
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Infrastructure Projects');
       
-      const fileName = `Infrastructure_Projects_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      // Add metadata
+      wb.Props = {
+        Title: 'Infrastructure Monitoring Report',
+        Subject: 'Infrastructure Projects Report',
+        Author: 'Provincial Government of Bataan',
+        CreatedDate: new Date()
+      };
+
+      const fileName = `Infrastructure_Projects_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 5).replace(':', '')}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
       sileo.success({ 
         title: 'Export Successful! 🏗️', 
-        description: `${fileName} downloaded with ${filtered.length} projects.` 
+        description: `${fileName} downloaded with ${filtered.length} projects and comprehensive summary.` 
       });
       
     } catch (error) {
@@ -504,6 +686,7 @@ export default function InfrastructureMonitoringPage() {
                   <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Calendar Days</th>
                   <th className="py-3 px-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contractor</th>
                   <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">% Completion</th>
+                  <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Slippage</th>
                   <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">PEO Remarks</th>
                   <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Paid</th>
                   <th className="py-3 px-3 text-center text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
@@ -512,7 +695,7 @@ export default function InfrastructureMonitoringPage() {
               <tbody className="divide-y divide-slate-50">
                 {paged.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-16">
+                    <td colSpan={12} className="text-center py-16">
                       <div className="flex flex-col items-center justify-center">
                         <Construction className="w-12 h-12 text-slate-200 mb-3" />
                         <p className="text-sm font-semibold text-slate-600">No infrastructure projects found</p>
@@ -564,6 +747,11 @@ export default function InfrastructureMonitoringPage() {
                             {project.percentageCompletion}%
                           </span>
                         </div>
+                      </td>
+                      <td className="py-3 px-3 text-center text-slate-700 font-medium">
+                        <span className={`font-bold ${project.slippage > 0 ? 'text-red-600' : project.slippage < 0 ? 'text-green-600' : 'text-slate-600'}`}>
+                          {project.slippage > 0 ? `+${project.slippage}` : project.slippage} days
+                        </span>
                       </td>
                       <td className="py-3 px-3 text-center">
                         <Badge className={`text-[10px] font-medium border ${peoRemarksColors[project.peoRemarks]}`}>
