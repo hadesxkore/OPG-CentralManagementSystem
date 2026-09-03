@@ -227,6 +227,11 @@ export interface TransactionRecord {
   receivedByDateTime?: string;         // Received By Date & Time
   remarks?: string;                    // Remarks if any
   createdAt?: string;                  // ISO timestamp of encoding
+  encodedBy?: string;                  // Name of encoder
+  encodedById?: string;                // User ID of encoder
+  office?: string;                     // Encoder's Office
+}
+
 // ============================================================
 // POPS PR / DV TRANSACTION ENCODING
 // ============================================================
@@ -253,6 +258,8 @@ export interface PopsTransactionRecord {
   encodedBy?: string;                  // Name of encoder
   encodedById?: string;                // User ID of encoder
   office?: string;                     // Encoder's Office
+}
+
 // ============================================================
 // OBR & SUPPLIER TRANSACTION ENCODING
 // ============================================================
