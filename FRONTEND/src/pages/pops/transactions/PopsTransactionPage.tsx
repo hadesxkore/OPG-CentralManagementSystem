@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { sileo } from 'sileo';
 import * as XLSX from 'xlsx';
 
 import {
-  FileSpreadsheet, Plus, Search, Filter, Download, Trash2, Edit3, Eye,
-  Sparkles, CheckCircle2, XCircle, Clock, MapPin, UserCheck, Calendar as CalendarIcon,
-  CreditCard, Wallet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, RefreshCw, FileText, Hash, AlertCircle,
-  Wand2, Users, Upload, FileUp, X, AlertTriangle, ShieldCheck
+  FileSpreadsheet, Plus, Search, Download, Trash2, Edit3, Eye,
+  CheckCircle2, CreditCard, Wallet, ChevronLeft, ChevronRight, AlertCircle,
+  Upload, FileUp, X, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -20,8 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as ShadcnCalendar } from '@/components/ui/calendar';
 import { useAuthStore } from '@/stores/authStore';
 import { usePopsTransactionStore } from '@/stores/popsTransactionStore';
 import type { PopsTransactionRecord, DvEntry } from '@/types';
@@ -38,7 +34,6 @@ export default function PopsTransactionPage() {
   // Modal states
   const [showNewModal, setShowNewModal] = useState(false);
   const [showClearAllDialog, setShowClearAllDialog] = useState(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<Partial<PopsTransactionRecord>>({
@@ -490,31 +485,35 @@ export default function PopsTransactionPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total PR Encoded"
-          value={records.length}
+          value={String(records.length)}
           subtitle="Total POPS transactions logged"
           icon={FileSpreadsheet}
-          trend={{ value: 'User Scoped', isPositive: true }}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
         <KpiCard
           title="Total PR Amount"
           value={formatPeso(totalPrAmount)}
           subtitle="Sum of encoded PR amounts"
           icon={CreditCard}
-          accentColor="emerald"
+          iconBg="bg-emerald-50"
+          iconColor="text-emerald-600"
         />
         <KpiCard
           title="Total DV Amount Released"
           value={formatPeso(totalDvAmount)}
           subtitle="Sum of processed DV vouchers"
           icon={Wallet}
-          accentColor="purple"
+          iconBg="bg-purple-50"
+          iconColor="text-purple-600"
         />
         <KpiCard
           title="Active PR Status"
-          value={activeCount}
+          value={String(activeCount)}
           subtitle={`${records.length - activeCount} cancelled or pending`}
           icon={CheckCircle2}
-          accentColor="blue"
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
       </div>
 

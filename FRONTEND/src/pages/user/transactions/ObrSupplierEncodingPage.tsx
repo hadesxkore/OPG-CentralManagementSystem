@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { sileo } from 'sileo';
 import * as XLSX from 'xlsx';
 
 import {
-  FileSpreadsheet, Plus, Search, Filter, Download, Trash2, Edit3, Eye,
-  Sparkles, CheckCircle2, XCircle, Clock, MapPin, UserCheck, Calendar as CalendarIcon,
-  CreditCard, Wallet, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, RefreshCw, FileText, Hash, AlertCircle,
-  Wand2, Users, Upload, FileUp, X, AlertTriangle, ScrollText, Calendar, User, ArrowRightLeft
+  Plus, Search, Download, Trash2, Edit3, Eye,
+  CheckCircle2, CreditCard, Wallet, ChevronLeft, ChevronRight, AlertCircle,
+  Upload, FileUp, AlertTriangle, ScrollText, User, ArrowRightLeft
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -458,31 +456,35 @@ export default function ObrSupplierEncodingPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total OBR Encoded"
-          value={records.length}
+          value={String(records.length)}
           subtitle="Total supplier records logged"
           icon={ScrollText}
-          trend={{ value: 'User Scoped', isPositive: true }}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
         <KpiCard
           title="Total OBR Amount"
           value={formatPeso(totalObrSum)}
           subtitle="Sum of encoded OBR amounts"
           icon={CreditCard}
-          accentColor="emerald"
+          iconBg="bg-emerald-50"
+          iconColor="text-emerald-600"
         />
         <KpiCard
           title="Total Voucher Amount"
           value={formatPeso(totalVoucherSum)}
           subtitle="Sum of voucher amounts"
           icon={Wallet}
-          accentColor="purple"
+          iconBg="bg-purple-50"
+          iconColor="text-purple-600"
         />
         <KpiCard
           title="Documents Released"
-          value={releasedCount}
+          value={String(releasedCount)}
           subtitle={`${records.length - releasedCount} pending release`}
           icon={CheckCircle2}
-          accentColor="blue"
+          iconBg="bg-blue-50"
+          iconColor="text-blue-600"
         />
       </div>
 

@@ -4,10 +4,9 @@ import { sileo } from 'sileo';
 import * as XLSX from 'xlsx';
 
 import {
-  FileSpreadsheet, Plus, Search, Filter, Download, Trash2, Edit3, Eye,
-  Sparkles, CheckCircle2, XCircle, Clock, MapPin, UserCheck, Calendar as CalendarIcon,
-  CreditCard, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, RefreshCw, FileText, Hash, AlertCircle,
-  Wand2, Users, Upload, FileUp, X, AlertTriangle
+  FileSpreadsheet, Plus, Search, Download, Trash2, Edit3, Eye,
+  CheckCircle2, CreditCard, ChevronLeft, ChevronRight, AlertCircle,
+  Upload, FileUp, AlertTriangle
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -596,36 +595,7 @@ export default function TransactionEncodingPage() {
           return;
         }
 
-        // Find column indices for key fields
-        let noColIdx: number = 0;
-        let receivedColIdx: number = 2;
-        let preparedColIdx: number = 3;
-        let requestorColIdx: number = 4;
-        let particularsColIdx: number = 7;
-        let payeeColIdx: number = 8;
-        let amountColIdx: number = 11;
 
-        Object.entries(bestMapping).forEach(([colIdxStr, fieldKey]) => {
-          const idx = Number(colIdxStr);
-          if (fieldKey === 'no') noColIdx = idx;
-          if (fieldKey === 'receivedDateTime') receivedColIdx = idx;
-          if (fieldKey === 'preparedDateTime') preparedColIdx = idx;
-          if (fieldKey === 'requestorContact') requestorColIdx = idx;
-          if (fieldKey === 'particulars') particularsColIdx = idx;
-          if (fieldKey === 'payee') payeeColIdx = idx;
-          if (fieldKey === 'amount') amountColIdx = idx;
-        });
-
-        // Helper to check if a cell contains a sub-row time value (e.g. 1:30, 9:30, 4:05 or 1899 Date object)
-        const isTimeOnlyVal = (val: any): boolean => {
-          if (val === null || val === undefined || val === '') return false;
-          if (val instanceof Date || (typeof val === 'object' && val && 'getTime' in val)) {
-            const y = new Date(val).getFullYear();
-            return y <= 1900;
-          }
-          const str = String(val).trim();
-          return /^\d{1,2}:\d{2}(\s*(AM|PM|am|pm))?$/.test(str);
-        };
 
         // 1. Find the last data row in Excel (any non-empty cell in columns A..N)
         let lastDataRowIndex = headerRowIndex;
