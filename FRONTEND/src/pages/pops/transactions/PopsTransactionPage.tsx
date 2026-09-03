@@ -235,6 +235,45 @@ export default function PopsTransactionPage() {
 
         if (headerRowIdx === -1) headerRowIdx = 0;
 
+        // ── Date Formatter ───────────────────────────────────────────────
+        const formatExcelDate = (val: any): string => {
+          if (val === null || val === undefined || val === '') return '';
+          if (val instanceof Date || (typeof val === 'object' && val && 'getTime' in val)) {
+            const d = new Date(val);
+            if (!isNaN(d.getTime())) {
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              const year = d.getFullYear();
+              const hours = d.getHours();
+              const mins = String(d.getMinutes()).padStart(2, '0');
+              if (hours > 0 || mins !== '00') {
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                const formattedHour = hours % 12 || 12;
+                return `${month}/${day}/${year} ${formattedHour}:${mins} ${ampm}`;
+              }
+              return `${month}/${day}/${year}`;
+            }
+          }
+          const str = String(val).trim();
+          if (str.includes('GMT') || /^[A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/.test(str)) {
+            const d = new Date(str);
+            if (!isNaN(d.getTime())) {
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              const year = d.getFullYear();
+              const hours = d.getHours();
+              const mins = String(d.getMinutes()).padStart(2, '0');
+              if (hours > 0 || mins !== '00') {
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                const formattedHour = hours % 12 || 12;
+                return `${month}/${day}/${year} ${formattedHour}:${mins} ${ampm}`;
+              }
+              return `${month}/${day}/${year}`;
+            }
+          }
+          return str;
+        };
+
         // Parse POPS rows
         const parsedRows: Partial<PopsTransactionRecord>[] = [];
         let rIdx = headerRowIdx + 1;
@@ -247,14 +286,14 @@ export default function PopsTransactionPage() {
           }
 
           const noVal = String(rowA[0] || '').trim();
-          const dateVal = String(rowA[1] || '').trim();
+          const dateVal = formatExcelDate(rowA[1]);
           const prVal = String(rowA[2] || '').trim();
           const partVal = String(rowA[3] || '').trim();
           const prAmtVal = parseFloat(String(rowA[4] || '').replace(/[^0-9.-]+/g, ''));
           const dv1Val = parseFloat(String(rowA[5] || '').replace(/[^0-9.-]+/g, ''));
           const payee1Val = String(rowA[6] || '').trim();
           const statusVal = String(rowA[7] || '').trim();
-          const dateRelVal = String(rowA[8] || '').trim();
+          const dateRelVal = formatExcelDate(rowA[8]);
           const remarksVal = String(rowA[9] || '').trim();
 
           const hasData = noVal || prVal || partVal || !isNaN(prAmtVal) || payee1Val;
