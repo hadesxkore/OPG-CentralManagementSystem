@@ -158,7 +158,6 @@ export default function PopsTransactionPage() {
           encodedById: user?.id || editingRecord.encodedById || 'usr-pops',
           office: user?.office || editingRecord.office || 'POPS Division',
         });
-        setSuccessMsg(`Record #${formData.no || editingRecord.no} updated successfully!`);
         sileo.success({ title: 'Record Updated! ✨', description: `POPS Transaction #${formData.no || editingRecord.no} updated.` });
         setEditingRecord(null);
       } else {
@@ -170,12 +169,9 @@ export default function PopsTransactionPage() {
           encodedById: user?.id || 'usr-pops',
           office: user?.office || 'POPS Division',
         });
-        setSuccessMsg(`POPS Record #${formData.no || getNextRecordNo()} added successfully!`);
         sileo.success({ title: 'Record Encoded! 🚀', description: `POPS Record #${formData.no || getNextRecordNo()} added to database.` });
         setShowNewModal(false);
       }
-
-      setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err) {
       console.error('Failed to save POPS transaction:', err);
       sileo.error({ title: 'Encoding Error', description: 'Could not save record to database.' });

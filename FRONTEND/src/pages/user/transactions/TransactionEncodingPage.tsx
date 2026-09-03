@@ -5,8 +5,9 @@ import * as XLSX from 'xlsx';
 
 import {
   FileSpreadsheet, Plus, Search, Download, Trash2, Edit3, Eye,
-  CheckCircle2, CreditCard, ChevronLeft, ChevronRight, AlertCircle,
-  Upload, FileUp, AlertTriangle
+  Sparkles, CheckCircle2, XCircle, Clock, MapPin, UserCheck, Calendar as CalendarIcon,
+  CreditCard, ChevronLeft, ChevronRight, RefreshCw, FileText, AlertCircle,
+  Users, Upload, FileUp, AlertTriangle
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
