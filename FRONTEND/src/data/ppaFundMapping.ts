@@ -197,6 +197,10 @@ export const ppaFundMapping: Record<string, { fppCode: string; ppa: string; }[]>
     {
       "fppCode": "9000-3-5.6",
       "ppa": "Procurement of Communication Equipment (i.e. portable radios, repeater, etc.)"
+    },
+    {
+      "fppCode": "9000-3-5.7",
+      "ppa": "Procurement and installation of Closed-Circuit Television (CCTV) cameras in strategic and hazard-prone areas within the LGU to strengthen disaster risk reduction, early detection of incidents, and real-time monitoring during emergencies"
     }
   ],
   "20%": [

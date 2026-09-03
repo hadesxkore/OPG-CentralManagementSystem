@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { AppShell } from '@/components/layout/AppShell';
+import type { UserRole } from '@/types';
 
 // Pages
 import LoginPage from '@/pages/auth/LoginPage';
@@ -40,17 +41,22 @@ import UserBalancesPage from '@/pages/user/budget/BalancesPage';
 import UserStatementPage from '@/pages/user/budget/StatementPage';
 import UserPPAPage from '@/pages/user/budget/PPAPage';
 import UserInfrastructureMonitoringPage from '@/pages/user/monitoring/InfrastructureMonitoringPage';
+import TransactionEncodingPage from '@/pages/user/transactions/TransactionEncodingPage';
+import ObrSupplierEncodingPage from '@/pages/user/transactions/ObrSupplierEncodingPage';
+
 
 
 // POPS Division
 import POPSDashboard from '@/pages/pops/POPSDashboard';
 import POPSOfficeTrackerPage from '@/pages/pops/POPSOfficeTrackerPage';
+import PopsTransactionPage from '@/pages/pops/transactions/PopsTransactionPage';
 
 // ── Auth Guard ───────────────────────────────────────────────────
-function RequireAuth({ role }: { role?: 'admin' | 'user' | 'pops' }) {
+function RequireAuth({ role }: { role?: UserRole | UserRole[] }) {
   const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (role && user?.role !== role) {
+  const allowed = Array.isArray(role) ? role : [role].filter(Boolean) as UserRole[];
+  if (allowed.length > 0 && !allowed.includes(user?.role as UserRole)) {
     const dest = user?.role === 'admin' ? '/admin/dashboard'
                : user?.role === 'pops'  ? '/pops/dashboard'
                : '/user/dashboard';
@@ -109,7 +115,10 @@ export const router = createBrowserRouter([
           { path: '/admin/requests/leave', element: <RequestManagementPage /> },
           { path: '/admin/requests/obr', element: <RequestManagementPage /> },
           { path: '/admin/requests/pr', element: <RequestManagementPage /> },
+          { path: '/admin/transactions', element: <TransactionEncodingPage /> },
+          { path: '/admin/transactions/obr-supplier', element: <ObrSupplierEncodingPage /> },
           { path: '/admin/users', element: <UserManagementPage /> },
+
           { path: '/admin/profile', element: <ProfilePage /> },
           { path: '/admin/settings', element: <SettingsPage /> },
           { path: '/admin/*', element: <Navigate to="/admin/dashboard" replace /> },
@@ -118,9 +127,9 @@ export const router = createBrowserRouter([
     ],
   },
 
-  // User routes
+  // User routes (also for restricted users)
   {
-    element: <RequireAuth role="user" />,
+    element: <RequireAuth role={['user', 'restricted']} />,
     children: [
       {
         element: <AppShell />,
@@ -146,7 +155,10 @@ export const router = createBrowserRouter([
           { path: '/user/budget/trash', element: <BudgetTrashPage /> },
           { path: '/user/budget/releases', element: <BudgetReleasePage /> },
           { path: '/user/monitoring/infrastructure', element: <UserInfrastructureMonitoringPage /> },
+          { path: '/user/transactions', element: <TransactionEncodingPage /> },
+          { path: '/user/transactions/obr-supplier', element: <ObrSupplierEncodingPage /> },
           { path: '/user/profile', element: <ProfilePage /> },
+
           { path: '/user/settings', element: <SettingsPage /> },
           { path: '/user/*', element: <Navigate to="/user/dashboard" replace /> },
         ],
@@ -163,6 +175,7 @@ export const router = createBrowserRouter([
         children: [
           { path: '/pops/dashboard',                element: <POPSDashboard /> },
           { path: '/pops/office/:officeKey',        element: <POPSOfficeTrackerPage /> },
+          { path: '/pops/transactions',             element: <PopsTransactionPage /> },
           { path: '/pops/profile',                  element: <ProfilePage /> },
           { path: '/pops/settings',                 element: <SettingsPage /> },
           { path: '/pops/*',                        element: <Navigate to="/pops/dashboard" replace /> },

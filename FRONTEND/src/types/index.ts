@@ -1,7 +1,7 @@
 // ============================================================
 // AUTHENTICATION
 // ============================================================
-export type UserRole = 'admin' | 'user' | 'pops';
+export type UserRole = 'admin' | 'user' | 'pops' | 'restricted';
 
 export interface AuthUser {
   id: string;
@@ -206,3 +206,75 @@ export interface BudgetRelease {
   office: string;                   // User office
   createdAt: string;                // ISO timestamp
 }
+
+// ============================================================
+// RECORD OF TRANSACTION ENCODING
+// ============================================================
+export interface TransactionRecord {
+  id: string;
+  no?: string;                         // Record / Item No.
+  dtn?: string;                        // Document Tracking Number
+  receivedDateTime?: string;           // Received Date & Time
+  preparedDateTime?: string;           // Prepared Date & Time
+  requestorContact?: string;           // Name of Requestor / Contact No.
+  barangay?: string;                   // Barangay
+  municipality?: string;               // Municipality
+  particulars?: string;                // Particulars / Description
+  payee?: string;                      // Payee Name
+  amount?: number;                     // Amount (₱)
+  dateProcessed?: string;              // Date Processed
+  receivedByNameSignature?: string;    // Received By (Name / Signature)
+  receivedByDateTime?: string;         // Received By Date & Time
+  remarks?: string;                    // Remarks if any
+  createdAt?: string;                  // ISO timestamp of encoding
+// ============================================================
+// POPS PR / DV TRANSACTION ENCODING
+// ============================================================
+export interface DvEntry {
+  id: string;
+  dvNo?: string;
+  dvAmount?: number;
+  payee?: string;
+}
+
+export interface PopsTransactionRecord {
+  id: string;
+  no?: string;                         // Record / Item No.
+  dateTime?: string;                   // Date and Time (e.g. 1/9/2026 1:55)
+  prNo?: string;                       // PR No. (e.g. PR: 2026-01-0008B)
+  obrNo?: string;                      // OBR No. (e.g. OBR: 100-26-01-00053)
+  particulars?: string;                // Particulars / Description
+  prAmount?: number;                   // PR Amount (Total amount for the PR)
+  dvEntries?: DvEntry[];               // DV Sub-rows (1 or more DVs per PR Amount)
+  status?: string;                     // Status (e.g. "For cheque released 2/25/26", "Cancelled 1/15/2026")
+  dateReleased?: string;               // Date Released
+  remarks?: string;                    // Remarks (e.g. "PNP")
+  createdAt?: string;                  // ISO timestamp of encoding
+  encodedBy?: string;                  // Name of encoder
+  encodedById?: string;                // User ID of encoder
+  office?: string;                     // Encoder's Office
+// ============================================================
+// OBR & SUPPLIER TRANSACTION ENCODING
+// ============================================================
+export interface ObrSupplierRecord {
+  id: string;
+  cNo?: string;                         // C. NO.
+  dateReleased?: string;               // DATE RELEASED
+  obrNo?: string;                      // OBR NO.
+  particulars?: string;                // PARTICULARS
+  dateOfEvent?: string;                // DATE OF EVENT
+  obrAmount?: number;                  // OBR AMOUNT (₱)
+  receivedBy1?: string;                // RECEIVED BY (PRINTED NAME WITH SIGNATURE) - 1st
+  dateTime1?: string;                  // DATE AND TIME - 1st
+  documentReturnDate?: string;         // DOCUMENT RETURN DATE
+  payee?: string;                      // PAYEE
+  voucherAmount?: number;              // VOUCHER AMOUNT (₱)
+  receivedBy2?: string;                // RECEIVED BY (PRINTED NAME WITH SIGNATURE) - 2nd
+  dateTime2?: string;                  // DATE AND TIME - 2nd
+  createdAt?: string;                  // ISO timestamp of encoding
+  encodedBy?: string;                  // Name of encoder
+  encodedById?: string;                // User ID of encoder
+  office?: string;                     // Encoder's Office
+}
+
+

@@ -53,7 +53,7 @@ type AppUser = {
   username: string;
   office: string;
   employeeId?: string;
-  role: 'admin' | 'user' | 'pops';
+  role: 'admin' | 'user' | 'pops' | 'restricted';
   destination: 'Central Users' | 'POPS';
   status: 'Active' | 'Inactive';
   allowedFundTypes?: string[];   // e.g. ['MOOE'] or null = all allowed
@@ -74,7 +74,7 @@ export default function UserManagementPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [roleDest, setRoleDest] = useState<'admin' | 'user' | 'pops'>('user');
+  const [roleDest, setRoleDest] = useState<'admin' | 'user' | 'pops' | 'restricted'>('user');
   const [allowedFundTypes, setAllowedFundTypes] = useState<string[]>([]);
 
   // Live fund sections from Statement of Appropriations
@@ -283,7 +283,7 @@ export default function UserManagementPage() {
                         </td>
                         <td className="py-3 pr-4 text-xs font-mono text-slate-600">{u.employeeId || '—'}</td>
                         <td className="py-3 pr-4">
-                          <div className={`inline-flex flex-col gap-0.5 px-2.5 py-1 rounded-lg border ${u.role === 'admin' ? 'bg-blue-50/50 border-blue-100 text-blue-700' : u.role === 'pops' ? 'bg-emerald-50/50 border-emerald-100 text-emerald-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                          <div className={`inline-flex flex-col gap-0.5 px-2.5 py-1 rounded-lg border ${u.role === 'admin' ? 'bg-blue-50/50 border-blue-100 text-blue-700' : u.role === 'pops' ? 'bg-emerald-50/50 border-emerald-100 text-emerald-700' : u.role === 'restricted' ? 'bg-amber-50/50 border-amber-100 text-amber-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
                              <span className="flex items-center gap-1 font-bold text-[11px] uppercase tracking-wide">
                                {u.role === 'admin' ? <ShieldCheck className="w-3 h-3" /> : <UserIcon className="w-3 h-3" />}
                                {u.role} Account
@@ -368,18 +368,18 @@ export default function UserManagementPage() {
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-slate-600">Access Role & Destination</label>
                 <div className="grid grid-cols-3 gap-2 mt-1">
-                  {(['admin', 'user', 'pops'] as const).map((r) => (
+                  {(['admin', 'user', 'pops', 'restricted'] as const).map((r) => (
                     <button
                       key={r}
                       onClick={() => setRoleDest(r)}
                       className={`h-11 capitalize text-xs font-bold rounded-lg border-2 transition-all ${roleDest === r ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-100 hover:border-slate-200 text-slate-500'}`}
                     >
-                      {r}
+                      {r === 'restricted' ? 'View Only' : r}
                     </button>
                   ))}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Destinations inherently mapped. Admin/User maps to <strong className="text-blue-500">Central Users</strong>. POPS maps to <strong className="text-emerald-500">POPS</strong> exclusively.
+                  Destinations inherently mapped. Admin/User/Restricted maps to <strong className="text-blue-500">Central Users</strong>. POPS maps to <strong className="text-emerald-500">POPS</strong> exclusively.
                 </p>
               </div>
 

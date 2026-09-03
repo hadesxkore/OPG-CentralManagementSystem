@@ -7,6 +7,8 @@ import {
   Scale,
   LayoutList,
   ClipboardList,
+  FileSpreadsheet,
+
   Inbox,
   Clock,
   Car,
@@ -112,7 +114,15 @@ const adminNav: NavSection[] = [
     ],
   },
   {
+    title: 'Transactions',
+    items: [
+      { label: 'Record of Transaction', path: '/admin/transactions', icon: FileSpreadsheet },
+      { label: 'OBR & Supplier Record', path: '/admin/transactions/obr-supplier', icon: ScrollText },
+    ],
+  },
+  {
     title: 'e-Requests',
+
     items: [
       {
         label: 'Requests',
@@ -201,9 +211,63 @@ const userNav: NavSection[] = [
     ],
   },
   {
+    title: 'Transactions',
+    items: [
+      { label: 'Record of Transaction', path: '/user/transactions', icon: FileSpreadsheet },
+      { label: 'OBR & Supplier Record', path: '/user/transactions/obr-supplier', icon: ScrollText },
+    ],
+  },
+  {
     title: 'Account',
+
     items: [
       { label: 'Settings', path: '/user/settings', icon: Settings },
+    ],
+  },
+];
+
+// ── Restricted View-Only Nav ──────────────────────────────────
+const restrictedNav: NavSection[] = [
+  {
+    items: [
+      { label: 'Home Page', path: '/user/dashboard', icon: LayoutDashboard },
+    ],
+  },
+  {
+    title: 'Services',
+    items: [
+      {
+        label: 'Departments',
+        path: '/user/services',
+        icon: Briefcase,
+        children: [
+          { label: 'Vice-Governor', path: '/user/services/vice-governor', icon: Shield },
+          { label: 'Sangguniang Panlalawigan', path: '/user/services/sangguniang-panlalawigan', icon: Users },
+          { label: 'Provincial Administrator', path: '/user/services/provincial-administrator', icon: Building2 },
+          { label: 'Provincial Treasurer', path: '/user/services/provincial-treasurer', icon: Wallet },
+          { label: 'Provincial Budget', path: '/user/services/provincial-budget', icon: BarChart3 },
+          { label: 'Provincial Assessor', path: '/user/services/provincial-assessor', icon: Home },
+          { label: 'Provincial Health', path: '/user/services/provincial-health', icon: Heart },
+          { label: 'Provincial Engineering', path: '/user/services/provincial-engineering', icon: Hammer },
+          { label: 'Provincial Agriculturist', path: '/user/services/provincial-agriculture', icon: Sprout },
+          { label: 'Provincial Legal', path: '/user/services/provincial-legal', icon: Scale },
+          { label: 'Provincial IT', path: '/user/services/provincial-it', icon: Monitor },
+          { label: 'General Services', path: '/user/services/general-services', icon: Wrench },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Monitoring',
+    items: [
+      {
+        label: 'Monitoring',
+        path: '/user/monitoring',
+        icon: Activity,
+        children: [
+          { label: 'Infrastructure', path: '/user/monitoring/infrastructure', icon: Construction },
+        ],
+      },
     ],
   },
 ];
@@ -234,6 +298,12 @@ const popsNav: NavSection[] = [
           { label: 'NBI', path: '/pops/office/nbi', icon: Shield },
         ],
       },
+    ],
+  },
+  {
+    title: 'Transactions',
+    items: [
+      { label: 'PR/DV Transactions', path: '/pops/transactions', icon: FileSpreadsheet },
     ],
   },
   {
@@ -322,10 +392,13 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle, mobile = false }: SidebarProps) {
   const { user } = useAuthStore();
-  let navSections = user?.role === 'admin' ? adminNav : user?.role === 'pops' ? popsNav : userNav;
+  let navSections = user?.role === 'admin' ? adminNav
+                  : user?.role === 'pops'  ? popsNav
+                  : user?.role === 'restricted' ? restrictedNav
+                  : userNav;
 
-  // Filter out Monitoring section if user is not "kath@gmail.com"
-  if (user?.email !== 'kath@gmail.com') {
+  // Filter out Monitoring section if user is not "kath@gmail.com" (skip for restricted role)
+  if (user?.role !== 'restricted' && user?.email !== 'kath@gmail.com') {
     navSections = navSections.filter(section => section.title !== 'Monitoring');
   }
 
