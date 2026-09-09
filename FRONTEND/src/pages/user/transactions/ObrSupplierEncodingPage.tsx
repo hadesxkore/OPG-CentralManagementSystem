@@ -123,8 +123,9 @@ export default function ObrSupplierEncodingPage() {
       const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
       const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
 
+      const userName = user?.name || user?.email || 'User';
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
 
       const tableData = filteredForPdf.map((r) => [
         r.cNo || '—',
@@ -197,6 +198,9 @@ export default function ObrSupplierEncodingPage() {
       doc.setTextColor(71, 85, 105);
       doc.text('CENTRAL MANAGEMENT SYSTEM — OBR & SUPPLIER RECORDS REPORT', 14, 17.5);
 
+      const userName = user?.name || user?.email || 'User';
+      const userNameClean = userName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Released Dates';
@@ -204,7 +208,7 @@ export default function ObrSupplierEncodingPage() {
       const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
 
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
 
       const tableData = filteredForPdf.map((r) => [
         r.cNo || '—',
@@ -252,7 +256,7 @@ export default function ObrSupplierEncodingPage() {
         }
       });
 
-      const fileName = `OBR_Supplier_Records_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `OBR_Supplier_Records_${userNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
     } catch (e) {

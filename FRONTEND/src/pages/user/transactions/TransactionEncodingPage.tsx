@@ -296,8 +296,9 @@ export default function TransactionEncodingPage() {
         : 'Date Period: All Recorded Dates';
       const totalAmount = filteredForPdf.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
+      const userName = user?.name || user?.email || 'User';
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
 
       const tableData = filteredForPdf.map((r, i) => [
         r.no || (i + 1).toString(),
@@ -368,13 +369,16 @@ export default function TransactionEncodingPage() {
       doc.setTextColor(71, 85, 105);
       doc.text('CENTRAL MANAGEMENT SYSTEM — RECORD OF TRANSACTIONS REPORT', 14, 17.5);
 
+      const userName = user?.name || user?.email || 'User';
+      const userNameClean = userName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Received Date): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Recorded Dates';
       const totalAmount = filteredForPdf.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
 
       const tableData = filteredForPdf.map((r, i) => [
         r.no || (i + 1).toString(),
@@ -420,7 +424,7 @@ export default function TransactionEncodingPage() {
         }
       });
 
-      const fileName = `Record_of_Transactions_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `Record_of_Transactions_${userNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
     } catch (e) {
