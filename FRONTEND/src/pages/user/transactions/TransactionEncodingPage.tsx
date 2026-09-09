@@ -22,8 +22,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as ShadcnCalendar } from '@/components/ui/calendar';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useAuthStore } from '@/stores/authStore';
 import { useTransactionStore } from '@/stores/transactionStore';
+import { formatDisplayDate, isDateInRange } from '@/lib/utils';
 import type { TransactionRecord } from '@/types';
 
 const BATAAN_MUNICIPALITIES = [
@@ -250,6 +253,180 @@ export default function TransactionEncodingPage() {
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // PDF Export states
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfStartDate, setPdfStartDate] = useState('');
+  const [pdfEndDate, setPdfEndDate] = useState('');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+
+  // Generate Landscape PDF for live preview in Modal
+  useEffect(() => {
+    if (!showPdfModal) {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
+      return;
+    }
+
+    const filteredForPdf = records.filter(r => isDateInRange(r.receivedDateTime, pdfStartDate, pdfEndDate));
+
+    if (filteredForPdf.length === 0) {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(30, 58, 138);
+      doc.text('OFFICE OF THE PROVINCIAL GOVERNOR', 14, 12);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text('CENTRAL MANAGEMENT SYSTEM — RECORD OF TRANSACTIONS REPORT', 14, 17.5);
+
+      const periodText = pdfStartDate || pdfEndDate
+        ? `Date Period (Received Date): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
+        : 'Date Period: All Recorded Dates';
+      const totalAmount = filteredForPdf.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+      doc.setFontSize(8);
+      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+
+      const tableData = filteredForPdf.map((r, i) => [
+        r.no || (i + 1).toString(),
+        r.dtn || '—',
+        formatDisplayDate(r.receivedDateTime) || '—',
+        formatDisplayDate(r.preparedDateTime) || '—',
+        r.requestorContact || '—',
+        r.barangay || '—',
+        r.municipality || '—',
+        r.particulars || '—',
+        r.payee || '—',
+        r.amount !== undefined && r.amount !== null ? `P${Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        formatDisplayDate(r.dateProcessed) || '—',
+        r.receivedByNameSignature || '—'
+      ]);
+
+      autoTable(doc, {
+        startY: 26,
+        head: [['NO.', 'DTN', 'RECEIVED DATE/TIME', 'PREPARED DATE/TIME', 'REQUESTOR / CONTACT', 'BRGY', 'MUNICIPALITY', 'PARTICULARS', 'PAYEE', 'AMOUNT', 'DATE PROCESSED', 'RECEIVED BY']],
+        body: tableData,
+        styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+        headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 18, fontStyle: 'bold' },
+          2: { cellWidth: 26 },
+          3: { cellWidth: 26 },
+          4: { cellWidth: 26 },
+          5: { cellWidth: 18 },
+          6: { cellWidth: 22 },
+          7: { cellWidth: 38 },
+          8: { cellWidth: 26 },
+          9: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+          10: { cellWidth: 20 },
+          11: { cellWidth: 20 }
+        },
+        didDrawPage: (data) => {
+          const str = `Page ${data.pageNumber} of ${doc.internal.pages.length - 1}`;
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(str, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 6);
+        }
+      });
+
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfBlobUrl(url);
+    } catch (e) {
+      console.error('PDF preview generation error:', e);
+    }
+  }, [showPdfModal, pdfStartDate, pdfEndDate, records]);
+
+  const handleDownloadPdf = () => {
+    const filteredForPdf = records.filter(r => isDateInRange(r.receivedDateTime, pdfStartDate, pdfEndDate));
+    if (filteredForPdf.length === 0) return;
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(30, 58, 138);
+      doc.text('OFFICE OF THE PROVINCIAL GOVERNOR', 14, 12);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text('CENTRAL MANAGEMENT SYSTEM — RECORD OF TRANSACTIONS REPORT', 14, 17.5);
+
+      const periodText = pdfStartDate || pdfEndDate
+        ? `Date Period (Received Date): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
+        : 'Date Period: All Recorded Dates';
+      const totalAmount = filteredForPdf.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+
+      doc.setFontSize(8);
+      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total Amount: P${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+
+      const tableData = filteredForPdf.map((r, i) => [
+        r.no || (i + 1).toString(),
+        r.dtn || '—',
+        formatDisplayDate(r.receivedDateTime) || '—',
+        formatDisplayDate(r.preparedDateTime) || '—',
+        r.requestorContact || '—',
+        r.barangay || '—',
+        r.municipality || '—',
+        r.particulars || '—',
+        r.payee || '—',
+        r.amount !== undefined && r.amount !== null ? `P${Number(r.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        formatDisplayDate(r.dateProcessed) || '—',
+        r.receivedByNameSignature || '—'
+      ]);
+
+      autoTable(doc, {
+        startY: 26,
+        head: [['NO.', 'DTN', 'RECEIVED DATE/TIME', 'PREPARED DATE/TIME', 'REQUESTOR / CONTACT', 'BRGY', 'MUNICIPALITY', 'PARTICULARS', 'PAYEE', 'AMOUNT', 'DATE PROCESSED', 'RECEIVED BY']],
+        body: tableData,
+        styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+        headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 12, halign: 'center' },
+          1: { cellWidth: 18, fontStyle: 'bold' },
+          2: { cellWidth: 26 },
+          3: { cellWidth: 26 },
+          4: { cellWidth: 26 },
+          5: { cellWidth: 18 },
+          6: { cellWidth: 22 },
+          7: { cellWidth: 38 },
+          8: { cellWidth: 26 },
+          9: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+          10: { cellWidth: 20 },
+          11: { cellWidth: 20 }
+        },
+        didDrawPage: (data) => {
+          const str = `Page ${data.pageNumber} of ${doc.internal.pages.length - 1}`;
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(str, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 6);
+        }
+      });
+
+      const fileName = `Record_of_Transactions_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
+    } catch (e) {
+      console.error('PDF export error:', e);
+    }
+  };
 
 
   useEffect(() => {
@@ -849,6 +1026,16 @@ export default function TransactionEncodingPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setShowPdfModal(true)}
+              disabled={records.length === 0}
+              className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 font-medium text-xs sm:text-sm flex items-center gap-1.5"
+            >
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span>Export PDF</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => { setImportRows([]); setImportFileName(''); setImportError(''); setShowImportModal(true); }}
               className="border-violet-200 hover:bg-violet-50 text-violet-700 font-medium text-xs sm:text-sm flex items-center gap-1.5"
             >
@@ -1370,12 +1557,12 @@ export default function TransactionEncodingPage() {
 
                       {/* 3. Received Date & Time */}
                       <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
-                        {r.receivedDateTime || '—'}
+                        {formatDisplayDate(r.receivedDateTime) || '—'}
                       </td>
 
                       {/* 4. Prepared Date & Time */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                        {r.preparedDateTime || '—'}
+                        {formatDisplayDate(r.preparedDateTime) || '—'}
                       </td>
 
                       {/* 5. Requestor / Contact */}
@@ -1427,7 +1614,7 @@ export default function TransactionEncodingPage() {
                       <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
                         {r.dateProcessed ? (
                           <Badge variant="outline" className="text-[10px] bg-blue-50 border-blue-200 text-blue-700">
-                            {r.dateProcessed}
+                            {formatDisplayDate(r.dateProcessed)}
                           </Badge>
                         ) : '—'}
                       </td>
@@ -1439,7 +1626,7 @@ export default function TransactionEncodingPage() {
 
                       {/* 13. Received By Date & Time */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                        {r.receivedByDateTime || '—'}
+                        {formatDisplayDate(r.receivedByDateTime) || '—'}
                       </td>
 
                       {/* 14. Remarks */}
@@ -1558,7 +1745,7 @@ export default function TransactionEncodingPage() {
               </Badge>
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
-              Encoded by {viewRecord?.encodedBy || 'Staff'} · {viewRecord?.createdAt ? new Date(viewRecord.createdAt).toLocaleString() : ''}
+              Encoded by {viewRecord?.encodedBy || 'Staff'} · {viewRecord?.createdAt ? formatDisplayDate(viewRecord.createdAt) : ''}
             </DialogDescription>
           </DialogHeader>
 
@@ -1575,11 +1762,11 @@ export default function TransactionEncodingPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Received Date & Time</p>
-                  <p className="font-medium text-slate-800 mt-0.5">{viewRecord.receivedDateTime || '—'}</p>
+                  <p className="font-medium text-slate-800 mt-0.5">{formatDisplayDate(viewRecord.receivedDateTime) || '—'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Prepared Date & Time</p>
-                  <p className="font-medium text-slate-800 mt-0.5">{viewRecord.preparedDateTime || '—'}</p>
+                  <p className="font-medium text-slate-800 mt-0.5">{formatDisplayDate(viewRecord.preparedDateTime) || '—'}</p>
                 </div>
               </div>
 
@@ -1616,13 +1803,13 @@ export default function TransactionEncodingPage() {
               <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Date Processed</p>
-                  <p className="font-medium text-slate-800 mt-0.5">{viewRecord.dateProcessed || '—'}</p>
+                  <p className="font-medium text-slate-800 mt-0.5">{formatDisplayDate(viewRecord.dateProcessed) || '—'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-slate-400 font-bold uppercase">Received By (Signature)</p>
                   <p className="font-semibold text-slate-800 mt-0.5">{viewRecord.receivedByNameSignature || '—'}</p>
                   {viewRecord.receivedByDateTime && (
-                    <p className="text-[10px] text-slate-400 mt-0.5">{viewRecord.receivedByDateTime}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{formatDisplayDate(viewRecord.receivedByDateTime)}</p>
                   )}
                 </div>
               </div>
@@ -1921,7 +2108,7 @@ export default function TransactionEncodingPage() {
                           <td className="py-2 px-3 max-w-[160px] truncate">{row.particulars || '—'}</td>
                           <td className="py-2 px-3 max-w-[120px] truncate">{row.payee || '—'}</td>
                           <td className="py-2 px-3 font-mono text-emerald-700">{row.amount !== undefined ? `₱${row.amount.toLocaleString()}` : '—'}</td>
-                          <td className="py-2 px-3">{row.dateProcessed || '—'}</td>
+                          <td className="py-2 px-3">{formatDisplayDate(row.dateProcessed) || '—'}</td>
                           <td className="py-2 px-3 max-w-[120px] truncate">{row.receivedByNameSignature || '—'}</td>
                           <td className="py-2 px-3 max-w-[120px] truncate italic text-slate-500">{row.remarks || '—'}</td>
                         </tr>
@@ -2086,6 +2273,105 @@ export default function TransactionEncodingPage() {
             >
               Clear All Records
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EXPORT PDF PREVIEW MODAL */}
+      <Dialog open={showPdfModal} onOpenChange={setShowPdfModal}>
+        <DialogContent className="max-w-5xl bg-white p-6 rounded-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <DialogTitle className="text-base font-bold text-slate-900">
+                  Export PDF Report Preview
+                </DialogTitle>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px] uppercase font-bold">
+                  Landscape A4
+                </Badge>
+              </div>
+            </div>
+            <DialogDescription className="text-xs text-slate-500 mt-1">
+              Select date period to filter by <strong>Received Date & Time</strong> column, then preview your PDF document before downloading.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Date Filters & Controls */}
+          <div className="py-3 px-4 bg-slate-50 rounded-xl border border-slate-200/80 my-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 whitespace-nowrap">From (Received Date):</Label>
+                  <Input
+                    type="date"
+                    value={pdfStartDate}
+                    onChange={(e) => setPdfStartDate(e.target.value)}
+                    className="h-8 text-xs bg-white w-36 border-slate-300"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 whitespace-nowrap">To:</Label>
+                  <Input
+                    type="date"
+                    value={pdfEndDate}
+                    onChange={(e) => setPdfEndDate(e.target.value)}
+                    className="h-8 text-xs bg-white w-36 border-slate-300"
+                  />
+                </div>
+                {(pdfStartDate || pdfEndDate) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setPdfStartDate(''); setPdfEndDate(''); }}
+                    className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  >
+                    Clear Dates
+                  </Button>
+                )}
+              </div>
+
+              {/* Summary matching badge */}
+              <div className="text-xs text-slate-600 font-medium bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                Matching Records: <strong className="text-blue-700">{records.filter(r => isDateInRange(r.receivedDateTime, pdfStartDate, pdfEndDate)).length}</strong> of {records.length}
+              </div>
+            </div>
+          </div>
+
+          {/* PDF Live Viewer Window */}
+          <div className="flex-1 min-h-[440px] bg-slate-100 rounded-xl border border-slate-200 overflow-hidden relative">
+            {pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                title="PDF Live Preview"
+                className="w-full h-full min-h-[440px] border-0 rounded-xl"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                <FileText className="w-12 h-12 text-slate-300 mb-2" />
+                <p className="font-semibold text-sm">No records match the selected date period</p>
+                <p className="text-xs text-slate-400 mt-1">Try adjusting or clearing the date range filter above.</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-[11px] text-slate-400 italic">
+              Orientation: <strong>Landscape</strong> (A4) · Format: Official OPG Report
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setShowPdfModal(false)} className="text-xs">
+                Close
+              </Button>
+              <Button
+                onClick={handleDownloadPdf}
+                disabled={!pdfBlobUrl}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

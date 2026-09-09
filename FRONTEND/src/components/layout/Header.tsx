@@ -41,9 +41,15 @@ export function Header({ mobileMenuOpen, onMenuClick, onDesktopToggle }: HeaderP
 
   useEffect(() => {
     const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(15));
-    const unsub = onSnapshot(q, snap => {
-      setNotifications(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsub = onSnapshot(
+      q,
+      snap => {
+        setNotifications(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      err => {
+        console.warn('Notifications onSnapshot warning:', err);
+      }
+    );
     return () => unsub();
   }, []);
 

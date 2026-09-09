@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import {
   Plus, Search, Download, Trash2, Edit3, Eye,
   CheckCircle2, CreditCard, Wallet, ChevronLeft, ChevronRight, AlertCircle,
-  Upload, FileUp, AlertTriangle, ScrollText, User, ArrowRightLeft
+  Upload, FileUp, AlertTriangle, ScrollText, User, ArrowRightLeft, FileText
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -18,9 +18,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useAuthStore } from '@/stores/authStore';
 import { useObrSupplierStore } from '@/stores/obrSupplierStore';
 import type { ObrSupplierRecord } from '@/types';
+import { formatDisplayDate, isDateInRange } from '@/lib/utils';
 
 const formatPeso = (v?: number) => {
   if (v === undefined || v === null || isNaN(v)) return '₱0.00';
@@ -76,6 +79,186 @@ export default function ObrSupplierEncodingPage() {
   const [importError, setImportError] = useState('');
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // PDF Export states
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfStartDate, setPdfStartDate] = useState('');
+  const [pdfEndDate, setPdfEndDate] = useState('');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+
+  // Generate Landscape PDF for live preview in Modal (Filtered by Date Released)
+  useEffect(() => {
+    if (!showPdfModal) {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
+      return;
+    }
+
+    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased, pdfStartDate, pdfEndDate));
+
+    if (filteredForPdf.length === 0) {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(15, 23, 42);
+      doc.text('OFFICE OF THE PROVINCIAL GOVERNOR', 14, 12);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text('CENTRAL MANAGEMENT SYSTEM — OBR & SUPPLIER RECORDS REPORT', 14, 17.5);
+
+      const periodText = pdfStartDate || pdfEndDate
+        ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
+        : 'Date Period: All Released Dates';
+      const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
+      const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
+
+      doc.setFontSize(8);
+      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+
+      const tableData = filteredForPdf.map((r) => [
+        r.cNo || '—',
+        formatDisplayDate(r.dateReleased) || '—',
+        r.obrNo || '—',
+        r.particulars || '—',
+        formatDisplayDate(r.dateOfEvent) || '—',
+        r.obrAmount !== undefined && r.obrAmount !== null ? `P${Number(r.obrAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        r.receivedBy1 || '—',
+        formatDisplayDate(r.dateTime1) || '—',
+        formatDisplayDate(r.documentReturnDate) || '—',
+        r.payee || '—',
+        r.voucherAmount !== undefined && r.voucherAmount !== null ? `P${Number(r.voucherAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        r.receivedBy2 || '—',
+        formatDisplayDate(r.dateTime2) || '—'
+      ]);
+
+      autoTable(doc, {
+        startY: 26,
+        head: [['C. NO.', 'DATE RELEASED', 'OBR NO.', 'PARTICULARS', 'DATE OF EVENT', 'OBR AMOUNT', 'RECEIVED BY (1)', 'DATE/TIME (1)', 'RETURN DATE', 'PAYEE / SUPPLIER', 'VOUCHER AMOUNT', 'RECEIVED BY (2)', 'DATE/TIME (2)']],
+        body: tableData,
+        styles: { fontSize: 6.5, cellPadding: 1.8, overflow: 'linebreak' },
+        headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 22, fontStyle: 'bold' },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 22 },
+          5: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          6: { cellWidth: 20 },
+          7: { cellWidth: 22 },
+          8: { cellWidth: 20 },
+          9: { cellWidth: 28 },
+          10: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          11: { cellWidth: 20 },
+          12: { cellWidth: 22 }
+        },
+        didDrawPage: (data) => {
+          const str = `Page ${data.pageNumber} of ${doc.internal.pages.length - 1}`;
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(str, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 6);
+        }
+      });
+
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfBlobUrl(url);
+    } catch (e) {
+      console.error('PDF preview generation error:', e);
+    }
+  }, [showPdfModal, pdfStartDate, pdfEndDate, records]);
+
+  const handleDownloadPdf = () => {
+    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased, pdfStartDate, pdfEndDate));
+    if (filteredForPdf.length === 0) return;
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(15, 23, 42);
+      doc.text('OFFICE OF THE PROVINCIAL GOVERNOR', 14, 12);
+
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(71, 85, 105);
+      doc.text('CENTRAL MANAGEMENT SYSTEM — OBR & SUPPLIER RECORDS REPORT', 14, 17.5);
+
+      const periodText = pdfStartDate || pdfEndDate
+        ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
+        : 'Date Period: All Released Dates';
+      const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
+      const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
+
+      doc.setFontSize(8);
+      doc.text(`${periodText}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+
+      const tableData = filteredForPdf.map((r) => [
+        r.cNo || '—',
+        formatDisplayDate(r.dateReleased) || '—',
+        r.obrNo || '—',
+        r.particulars || '—',
+        formatDisplayDate(r.dateOfEvent) || '—',
+        r.obrAmount !== undefined && r.obrAmount !== null ? `P${Number(r.obrAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        r.receivedBy1 || '—',
+        formatDisplayDate(r.dateTime1) || '—',
+        formatDisplayDate(r.documentReturnDate) || '—',
+        r.payee || '—',
+        r.voucherAmount !== undefined && r.voucherAmount !== null ? `P${Number(r.voucherAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—',
+        r.receivedBy2 || '—',
+        formatDisplayDate(r.dateTime2) || '—'
+      ]);
+
+      autoTable(doc, {
+        startY: 26,
+        head: [['C. NO.', 'DATE RELEASED', 'OBR NO.', 'PARTICULARS', 'DATE OF EVENT', 'OBR AMOUNT', 'RECEIVED BY (1)', 'DATE/TIME (1)', 'RETURN DATE', 'PAYEE / SUPPLIER', 'VOUCHER AMOUNT', 'RECEIVED BY (2)', 'DATE/TIME (2)']],
+        body: tableData,
+        styles: { fontSize: 6.5, cellPadding: 1.8, overflow: 'linebreak' },
+        headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        columnStyles: {
+          0: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 22, fontStyle: 'bold' },
+          3: { cellWidth: 32 },
+          4: { cellWidth: 22 },
+          5: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          6: { cellWidth: 20 },
+          7: { cellWidth: 22 },
+          8: { cellWidth: 20 },
+          9: { cellWidth: 28 },
+          10: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+          11: { cellWidth: 20 },
+          12: { cellWidth: 22 }
+        },
+        didDrawPage: (data) => {
+          const str = `Page ${data.pageNumber} of ${doc.internal.pages.length - 1}`;
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(str, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 6);
+        }
+      });
+
+      const fileName = `OBR_Supplier_Records_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
+    } catch (e) {
+      console.error('PDF export error:', e);
+    }
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -217,42 +400,7 @@ export default function ObrSupplierEncodingPage() {
         const vAmtIdx = findColIdx(['VOUCHER AMOUNT', 'VOUCHER']);
 
         const formatExcelDate = (val: any): string => {
-          if (val === null || val === undefined || val === '') return '';
-          if (val instanceof Date || (typeof val === 'object' && val && 'getTime' in val)) {
-            const d = new Date(val);
-            if (!isNaN(d.getTime())) {
-              const month = String(d.getMonth() + 1).padStart(2, '0');
-              const day = String(d.getDate()).padStart(2, '0');
-              const year = d.getFullYear();
-              const hours = d.getHours();
-              const mins = String(d.getMinutes()).padStart(2, '0');
-              if (hours > 0 || mins !== '00') {
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                const formattedHour = hours % 12 || 12;
-                return `${month}/${day}/${year} ${formattedHour}:${mins} ${ampm}`;
-              }
-              return `${month}/${day}/${year}`;
-            }
-          }
-
-          const str = String(val).trim();
-          if (str.includes('GMT') || /^[A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{4}/.test(str)) {
-            const d = new Date(str);
-            if (!isNaN(d.getTime())) {
-              const month = String(d.getMonth() + 1).padStart(2, '0');
-              const day = String(d.getDate()).padStart(2, '0');
-              const year = d.getFullYear();
-              const hours = d.getHours();
-              const mins = String(d.getMinutes()).padStart(2, '0');
-              if (hours > 0 || mins !== '00') {
-                const ampm = hours >= 12 ? 'PM' : 'AM';
-                const formattedHour = hours % 12 || 12;
-                return `${month}/${day}/${year} ${formattedHour}:${mins} ${ampm}`;
-              }
-              return `${month}/${day}/${year}`;
-            }
-          }
-          return str;
+          return formatDisplayDate(val);
         };
 
         const parsedRows: Partial<ObrSupplierRecord>[] = [];
@@ -434,6 +582,16 @@ export default function ObrSupplierEncodingPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => setShowPdfModal(true)}
+              disabled={records.length === 0}
+              className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 font-medium text-xs sm:text-sm flex items-center gap-1.5"
+            >
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span>Export PDF</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowImportModal(true)}
               className="border-blue-200 bg-blue-50/50 hover:bg-blue-100 text-blue-700 font-medium text-xs sm:text-sm flex items-center gap-1.5"
             >
@@ -586,8 +744,8 @@ export default function ObrSupplierEncodingPage() {
                       </td>
 
                       {/* Date Released */}
-                      <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
-                        {r.dateReleased || '—'}
+                      <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
+                        {formatDisplayDate(r.dateReleased) || '—'}
                       </td>
 
                       {/* OBR NO */}
@@ -606,7 +764,7 @@ export default function ObrSupplierEncodingPage() {
 
                       {/* Date of Event */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                        {r.dateOfEvent || '—'}
+                        {formatDisplayDate(r.dateOfEvent) || '—'}
                       </td>
 
                       {/* OBR Amount */}
@@ -621,12 +779,12 @@ export default function ObrSupplierEncodingPage() {
 
                       {/* Date Time 1 */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap bg-slate-50/40">
-                        {r.dateTime1 || '—'}
+                        {formatDisplayDate(r.dateTime1) || '—'}
                       </td>
 
                       {/* Doc Return Date */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                        {r.documentReturnDate || '—'}
+                        {formatDisplayDate(r.documentReturnDate) || '—'}
                       </td>
 
                       {/* Payee */}
@@ -646,7 +804,7 @@ export default function ObrSupplierEncodingPage() {
 
                       {/* Date Time 2 */}
                       <td className="py-3 px-3 text-slate-600 whitespace-nowrap bg-emerald-50/20">
-                        {r.dateTime2 || '—'}
+                        {formatDisplayDate(r.dateTime2) || '—'}
                       </td>
 
                       {/* Actions */}
@@ -950,7 +1108,7 @@ export default function ObrSupplierEncodingPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">DATE RELEASED</span>
-                  <span className="font-medium text-slate-700">{viewRecord.dateReleased || '—'}</span>
+                  <span className="font-medium text-slate-700">{formatDisplayDate(viewRecord.dateReleased) || '—'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">OBR NO.</span>
@@ -985,14 +1143,14 @@ export default function ObrSupplierEncodingPage() {
                 </div>
                 <div>
                   <span className="text-blue-500 block text-[10px] font-bold">1ST DATE & TIME</span>
-                  <span className="font-medium text-slate-700">{viewRecord.dateTime1 || '—'}</span>
+                  <span className="font-medium text-slate-700">{formatDisplayDate(viewRecord.dateTime1) || '—'}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
                 <div>
                   <span className="text-emerald-600 block text-[10px] font-bold">DOC RETURN DATE</span>
-                  <span className="font-medium text-slate-800">{viewRecord.documentReturnDate || '—'}</span>
+                  <span className="font-medium text-slate-800">{formatDisplayDate(viewRecord.documentReturnDate) || '—'}</span>
                 </div>
                 <div>
                   <span className="text-emerald-600 block text-[10px] font-bold">2ND RECEIVED BY</span>
@@ -1000,7 +1158,7 @@ export default function ObrSupplierEncodingPage() {
                 </div>
                 <div>
                   <span className="text-emerald-600 block text-[10px] font-bold">2ND DATE & TIME</span>
-                  <span className="font-medium text-slate-700">{viewRecord.dateTime2 || '—'}</span>
+                  <span className="font-medium text-slate-700">{formatDisplayDate(viewRecord.dateTime2) || '—'}</span>
                 </div>
               </div>
             </div>
@@ -1127,6 +1285,105 @@ export default function ObrSupplierEncodingPage() {
             >
               Clear All Records
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* EXPORT PDF PREVIEW MODAL */}
+      <Dialog open={showPdfModal} onOpenChange={setShowPdfModal}>
+        <DialogContent className="max-w-5xl bg-white p-6 rounded-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <DialogTitle className="text-base font-bold text-slate-900">
+                  Export PDF Report Preview
+                </DialogTitle>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px] uppercase font-bold">
+                  Landscape A4
+                </Badge>
+              </div>
+            </div>
+            <DialogDescription className="text-xs text-slate-500 mt-1">
+              Select date period to filter by <strong>Date Released</strong> column, then preview your PDF document before downloading.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Date Filters & Controls */}
+          <div className="py-3 px-4 bg-slate-50 rounded-xl border border-slate-200/80 my-3 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 whitespace-nowrap">From (Date Released):</Label>
+                  <Input
+                    type="date"
+                    value={pdfStartDate}
+                    onChange={(e) => setPdfStartDate(e.target.value)}
+                    className="h-8 text-xs bg-white w-36 border-slate-300"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-xs font-semibold text-slate-700 whitespace-nowrap">To:</Label>
+                  <Input
+                    type="date"
+                    value={pdfEndDate}
+                    onChange={(e) => setPdfEndDate(e.target.value)}
+                    className="h-8 text-xs bg-white w-36 border-slate-300"
+                  />
+                </div>
+                {(pdfStartDate || pdfEndDate) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setPdfStartDate(''); setPdfEndDate(''); }}
+                    className="h-8 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  >
+                    Clear Dates
+                  </Button>
+                )}
+              </div>
+
+              {/* Summary matching badge */}
+              <div className="text-xs text-slate-600 font-medium bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                Matching Records: <strong className="text-blue-700">{records.filter(r => isDateInRange(r.dateReleased, pdfStartDate, pdfEndDate)).length}</strong> of {records.length}
+              </div>
+            </div>
+          </div>
+
+          {/* PDF Live Viewer Window */}
+          <div className="flex-1 min-h-[440px] bg-slate-100 rounded-xl border border-slate-200 overflow-hidden relative">
+            {pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                title="PDF Live Preview"
+                className="w-full h-full min-h-[440px] border-0 rounded-xl"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                <FileText className="w-12 h-12 text-slate-300 mb-2" />
+                <p className="font-semibold text-sm">No records match the selected date period</p>
+                <p className="text-xs text-slate-400 mt-1">Try adjusting or clearing the date range filter above.</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-4 border-t border-slate-100 flex items-center justify-between">
+            <div className="text-[11px] text-slate-400 italic">
+              Orientation: <strong>Landscape</strong> (A4) · Format: Official OPG Report
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setShowPdfModal(false)} className="text-xs">
+                Close
+              </Button>
+              <Button
+                onClick={handleDownloadPdf}
+                disabled={!pdfBlobUrl}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
