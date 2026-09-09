@@ -5,7 +5,8 @@ import * as XLSX from 'xlsx';
 import {
   Plus, Search, Download, Trash2, Edit3, Eye,
   CheckCircle2, CreditCard, Wallet, ChevronLeft, ChevronRight, AlertCircle,
-  Upload, FileUp, AlertTriangle, ScrollText, User, ArrowRightLeft, FileText
+  Upload, FileUp, AlertTriangle, ScrollText, User, ArrowRightLeft, FileText,
+  Users, ShieldCheck
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -23,7 +24,11 @@ import autoTable from 'jspdf-autotable';
 import { useAuthStore } from '@/stores/authStore';
 import { useObrSupplierStore } from '@/stores/obrSupplierStore';
 import type { ObrSupplierRecord } from '@/types';
-import { formatDisplayDate, isDateInRange } from '@/lib/utils';
+import { cn, formatDisplayDate, isDateInRange } from '@/lib/utils';
+import { db } from '@/backend/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+
+type AppUser = { id: string; name: string; username?: string; office?: string; role?: string; destination?: string; status?: string; };
 
 const formatPeso = (v?: number) => {
   if (v === undefined || v === null || isNaN(v)) return '₱0.00';
@@ -33,6 +38,56 @@ const formatPeso = (v?: number) => {
 export default function ObrSupplierEncodingPage() {
   const { user } = useAuthStore();
   const { records, subscribeTransactions, addTransaction, bulkAddTransactions, updateTransaction, deleteTransaction, clearAllTransactions } = useObrSupplierStore();
+
+  // ── Admin user-selection state ───────────────────────────────────────────
+  const isAdmin = user?.role === 'admin';
+  const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const selectedUser = availableUsers.find(u => u.id === selectedUserId) || null;
+  const effectiveUserId = selectedUserId || user?.id || '';
+  const viewingLabel = selectedUser ? `${selectedUser.name} (${selectedUser.office || selectedUser.role || ''})` : 'My Records';
+
+  // Map of userId -> count of encoded records in obr_supplier_records
+  const [userRecordCounts, setUserRecordCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    const unsubRecords = onSnapshot(collection(db, 'obr_supplier_records'), snap => {
+      const counts: Record<string, number> = {};
+      snap.docs.forEach(d => {
+        const encId = d.data().encodedById;
+        if (encId) counts[encId] = (counts[encId] || 0) + 1;
+      });
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('opg_obr_supplier_tx_')) {
+          const uid = key.replace('opg_obr_supplier_tx_', '');
+          try {
+            const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              counts[uid] = Math.max(counts[uid] || 0, parsed.length);
+            }
+          } catch (e) {}
+        }
+      }
+      setUserRecordCounts(counts);
+    }, () => {});
+
+    return () => unsubRecords();
+  }, [isAdmin]);
+
+  // Fetch ALL Central Users when admin
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+      const all: AppUser[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as AppUser));
+      const centralUsers = all.filter(u => u.destination === 'Central Users' || u.role === 'user' || u.role === 'restricted');
+      setAvailableUsers(centralUsers);
+    }, () => {});
+
+    return () => unsubUsers();
+  }, [isAdmin]);
 
   // Modal states
   const [showNewModal, setShowNewModal] = useState(false);
@@ -120,12 +175,17 @@ export default function ObrSupplierEncodingPage() {
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Released Dates';
-      const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
-      const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
 
-      const userName = user?.name || user?.email || 'User';
+      const ownerName = selectedUser
+        ? (selectedUser.name || selectedUser.username || 'User')
+        : (user?.name || user?.username || user?.email || 'User');
+
+      const headerText = selectedUser && isAdmin
+        ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
+        : `${periodText}   |   Downloaded by: ${ownerName}   |   Total Records: ${filteredForPdf.length}`;
+
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(headerText, 14, 23);
 
       const tableData = filteredForPdf.map((r) => [
         r.cNo || '—',
@@ -198,8 +258,10 @@ export default function ObrSupplierEncodingPage() {
       doc.setTextColor(71, 85, 105);
       doc.text('CENTRAL MANAGEMENT SYSTEM — OBR & SUPPLIER RECORDS REPORT', 14, 17.5);
 
-      const userName = user?.name || user?.email || 'User';
-      const userNameClean = userName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+      const ownerName = selectedUser
+        ? (selectedUser.name || selectedUser.username || 'User')
+        : (user?.name || user?.username || user?.email || 'User');
+      const ownerNameClean = ownerName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
 
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
@@ -207,8 +269,12 @@ export default function ObrSupplierEncodingPage() {
       const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
       const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
 
+      const headerText = selectedUser && isAdmin
+        ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
+        : `${periodText}   |   Downloaded by: ${ownerName}   |   Total Records: ${filteredForPdf.length}`;
+
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total OBR: P${totalObr.toLocaleString('en-US', { minimumFractionDigits: 2 })}   |   Total Voucher: P${totalVoucher.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(headerText, 14, 23);
 
       const tableData = filteredForPdf.map((r) => [
         r.cNo || '—',
@@ -256,7 +322,7 @@ export default function ObrSupplierEncodingPage() {
         }
       });
 
-      const fileName = `OBR_Supplier_Records_${userNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `OBR_Supplier_Records_${ownerNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
     } catch (e) {
@@ -265,10 +331,10 @@ export default function ObrSupplierEncodingPage() {
   };
 
   useEffect(() => {
-    if (!user?.id) return;
-    const unsub = subscribeTransactions(user.id);
+    if (!effectiveUserId) return;
+    const unsub = subscribeTransactions(effectiveUserId);
     return () => unsub();
-  }, [subscribeTransactions, user?.id]);
+  }, [subscribeTransactions, effectiveUserId]);
 
   const handleInputChange = (field: keyof ObrSupplierRecord, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -566,6 +632,62 @@ export default function ObrSupplierEncodingPage() {
 
   return (
     <div className="space-y-6 pb-12">
+      {/* ── Admin User-Selector Banner ───────────────────────────────── */}
+      {isAdmin && (
+        <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-800 leading-tight">Admin View Mode</p>
+              <p className="text-[11px] text-amber-600 leading-tight">Select a user to view their OBR &amp; Supplier Records</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+            <Select
+              value={selectedUserId || '__self__'}
+              onValueChange={val => setSelectedUserId(val === '__self__' ? '' : val)}
+            >
+              <SelectTrigger className="h-9 text-xs bg-white border-amber-200 text-slate-700 min-w-[220px] w-auto">
+                <Users className="w-3.5 h-3.5 text-amber-500 mr-1.5 flex-shrink-0" />
+                <SelectValue placeholder="Select user to view..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__self__" className="text-xs font-semibold text-slate-500">— View My Own Records —</SelectItem>
+                {availableUsers.map(u => {
+                  const count = userRecordCounts[u.id] || 0;
+                  return (
+                    <SelectItem key={u.id} value={u.id} className="text-xs">
+                      <div className="flex items-center justify-between gap-3 w-full">
+                        <span className="font-medium">{u.name}{u.office ? ` (${u.office})` : ''}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", count > 0 ? "bg-emerald-100 text-emerald-700 font-semibold" : "bg-slate-100 text-slate-400")}>
+                          {count > 0 ? `${count} record${count > 1 ? 's' : ''}` : 'No records'}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {selectedUserId && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedUserId('')}
+                className="h-9 text-xs border-amber-200 text-amber-700 hover:bg-amber-100"
+              >
+                ✕ Clear
+              </Button>
+            )}
+          </div>
+          {selectedUser && (
+            <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold px-2.5 py-1 whitespace-nowrap">
+              Viewing: {viewingLabel}
+            </Badge>
+          )}
+        </div>
+      )}
       {/* Page Header */}
       <PageHeader
         title="OBR & Supplier Record"

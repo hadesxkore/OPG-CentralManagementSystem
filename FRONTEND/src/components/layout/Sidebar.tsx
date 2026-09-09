@@ -118,6 +118,7 @@ const adminNav: NavSection[] = [
     items: [
       { label: 'Record of Transaction', path: '/admin/transactions', icon: FileSpreadsheet },
       { label: 'OBR & Supplier Record', path: '/admin/transactions/obr-supplier', icon: ScrollText },
+      { label: 'POPS PR/DV Transactions', path: '/admin/transactions/pops', icon: Shield },
     ],
   },
   {

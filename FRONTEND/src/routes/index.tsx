@@ -117,6 +117,7 @@ export const router = createBrowserRouter([
           { path: '/admin/requests/pr', element: <RequestManagementPage /> },
           { path: '/admin/transactions', element: <TransactionEncodingPage /> },
           { path: '/admin/transactions/obr-supplier', element: <ObrSupplierEncodingPage /> },
+          { path: '/admin/transactions/pops', element: <PopsTransactionPage /> },
           { path: '/admin/users', element: <UserManagementPage /> },
 
           { path: '/admin/profile', element: <ProfilePage /> },
@@ -168,7 +169,7 @@ export const router = createBrowserRouter([
 
   // POPS Division routes
   {
-    element: <RequireAuth role="pops" />,
+    element: <RequireAuth role={['pops', 'admin']} />,
     children: [
       {
         element: <AppShell />,

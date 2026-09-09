@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import {
   FileSpreadsheet, Plus, Search, Download, Trash2, Edit3, Eye,
   CheckCircle2, CreditCard, Wallet, ChevronLeft, ChevronRight, AlertCircle,
-  Upload, FileUp, X, AlertTriangle, ShieldCheck, FileText
+  Upload, FileUp, X, AlertTriangle, ShieldCheck, FileText, Users
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -23,7 +23,11 @@ import autoTable from 'jspdf-autotable';
 import { useAuthStore } from '@/stores/authStore';
 import { usePopsTransactionStore } from '@/stores/popsTransactionStore';
 import type { PopsTransactionRecord, DvEntry } from '@/types';
-import { formatDisplayDate, isDateInRange } from '@/lib/utils';
+import { cn, formatDisplayDate, isDateInRange } from '@/lib/utils';
+import { db } from '@/backend/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+
+type AppUser = { id: string; name: string; username?: string; office?: string; role?: string; destination?: string; status?: string; };
 
 const formatPeso = (v?: number) => {
   if (v === undefined || v === null || isNaN(v)) return '₱0.00';
@@ -33,6 +37,56 @@ const formatPeso = (v?: number) => {
 export default function PopsTransactionPage() {
   const { user } = useAuthStore();
   const { records, subscribeTransactions, addTransaction, bulkAddTransactions, updateTransaction, deleteTransaction, clearAllTransactions } = usePopsTransactionStore();
+
+  // ── Admin user-selection state ───────────────────────────────────────────
+  const isAdmin = user?.role === 'admin';
+  const [availableUsers, setAvailableUsers] = useState<AppUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const selectedUser = availableUsers.find(u => u.id === selectedUserId) || null;
+  const effectiveUserId = selectedUserId || user?.id || '';
+  const viewingLabel = selectedUser ? `${selectedUser.name} (${selectedUser.office || selectedUser.role || ''})` : 'My Records';
+
+  // Map of userId -> count of encoded records in pops_transaction_records
+  const [userRecordCounts, setUserRecordCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    
+    const unsubRecords = onSnapshot(collection(db, 'pops_transaction_records'), snap => {
+      const counts: Record<string, number> = {};
+      snap.docs.forEach(d => {
+        const encId = d.data().encodedById;
+        if (encId) counts[encId] = (counts[encId] || 0) + 1;
+      });
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('opg_pops_tx_')) {
+          const uid = key.replace('opg_pops_tx_', '');
+          try {
+            const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              counts[uid] = Math.max(counts[uid] || 0, parsed.length);
+            }
+          } catch (e) {}
+        }
+      }
+      setUserRecordCounts(counts);
+    }, () => {});
+
+    return () => unsubRecords();
+  }, [isAdmin]);
+
+  // Fetch ALL POPS Users when admin
+  useEffect(() => {
+    if (!isAdmin) return;
+    const unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+      const all: AppUser[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as AppUser));
+      const popsUsers = all.filter(u => u.destination === 'POPS' || u.role === 'pops');
+      setAvailableUsers(popsUsers);
+    }, () => {});
+
+    return () => unsubUsers();
+  }, [isAdmin]);
 
   // Modal states
   const [showNewModal, setShowNewModal] = useState(false);
@@ -68,7 +122,7 @@ export default function PopsTransactionPage() {
       return;
     }
 
-    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased, pdfStartDate, pdfEndDate));
+    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased || r.dateTime, pdfStartDate, pdfEndDate));
 
     if (filteredForPdf.length === 0) {
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
@@ -90,13 +144,19 @@ export default function PopsTransactionPage() {
       doc.text('CENTRAL MANAGEMENT SYSTEM — POPS PR / DV TRANSACTIONS REPORT', 14, 17.5);
 
       const periodText = pdfStartDate || pdfEndDate
-        ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
-        : 'Date Period: All Released Dates';
-      const totalPr = filteredForPdf.reduce((sum, r) => sum + (Number(r.prAmount) || 0), 0);
+        ? `Date Period: ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
+        : 'Date Period: All Dates';
 
-      const userName = user?.name || user?.email || 'User';
+      const ownerName = selectedUser
+        ? (selectedUser.name || selectedUser.username || 'User')
+        : (user?.name || user?.username || user?.email || 'User');
+
+      const headerText = selectedUser && isAdmin
+        ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
+        : `${periodText}   |   Downloaded by: ${ownerName}   |   Total Records: ${filteredForPdf.length}`;
+
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total PR Amount: P${totalPr.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(headerText, 14, 23);
 
       const tableData = filteredForPdf.map((r, i) => {
         const dvSummary = (r.dvEntries || [])
@@ -153,7 +213,7 @@ export default function PopsTransactionPage() {
   }, [showPdfModal, pdfStartDate, pdfEndDate, records]);
 
   const handleDownloadPdf = () => {
-    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased, pdfStartDate, pdfEndDate));
+    const filteredForPdf = records.filter(r => isDateInRange(r.dateReleased || r.dateTime, pdfStartDate, pdfEndDate));
     if (filteredForPdf.length === 0) return;
 
     try {
@@ -169,16 +229,22 @@ export default function PopsTransactionPage() {
       doc.setTextColor(71, 85, 105);
       doc.text('CENTRAL MANAGEMENT SYSTEM — POPS PR / DV TRANSACTIONS REPORT', 14, 17.5);
 
-      const userName = user?.name || user?.email || 'User';
-      const userNameClean = userName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+      const ownerName = selectedUser
+        ? (selectedUser.name || selectedUser.username || 'User')
+        : (user?.name || user?.username || user?.email || 'User');
+      const ownerNameClean = ownerName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
 
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Released Dates';
       const totalPr = filteredForPdf.reduce((sum, r) => sum + (Number(r.prAmount) || 0), 0);
 
+      const headerText = selectedUser && isAdmin
+        ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
+        : `${periodText}   |   Downloaded by: ${ownerName}   |   Total Records: ${filteredForPdf.length}`;
+
       doc.setFontSize(8);
-      doc.text(`${periodText}   |   Downloaded by: ${userName}   |   Total Records: ${filteredForPdf.length}   |   Total PR Amount: P${totalPr.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 14, 23);
+      doc.text(headerText, 14, 23);
 
       const tableData = filteredForPdf.map((r, i) => {
         const dvSummary = (r.dvEntries || [])
@@ -226,7 +292,7 @@ export default function PopsTransactionPage() {
         }
       });
 
-      const fileName = `POPS_PR_DV_Transactions_${userNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const fileName = `POPS_PR_DV_Transactions_${ownerNameClean}_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       sileo.success({ title: 'PDF Downloaded! 📄', description: `Saved ${fileName}` });
     } catch (e) {
@@ -261,10 +327,12 @@ export default function PopsTransactionPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!user?.id) return;
-    const unsub = subscribeTransactions(user.id);
+    // Admin with no user selected: don't subscribe to avoid loading admin's own (empty) data
+    if (isAdmin && !selectedUserId) return;
+    if (!effectiveUserId) return;
+    const unsub = subscribeTransactions(effectiveUserId);
     return () => unsub();
-  }, [subscribeTransactions, user?.id]);
+  }, [subscribeTransactions, effectiveUserId, isAdmin, selectedUserId]);
 
   const handleInputChange = (field: keyof PopsTransactionRecord, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -663,9 +731,112 @@ export default function PopsTransactionPage() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Page Header */}
+      {/* ── Admin User-Selector Banner ───────────────────────────────── */}
+      {isAdmin && (
+        <div className="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 shadow-sm">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center">
+              <ShieldCheck className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-800 leading-tight">Admin View Mode</p>
+              <p className="text-[11px] text-amber-600 leading-tight">Select a POPS user to view their PR / DV Transactions</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+            <Select
+              value={selectedUserId || '__self__'}
+              onValueChange={val => setSelectedUserId(val === '__self__' ? '' : val)}
+            >
+              <SelectTrigger className="h-9 text-xs bg-white border-amber-200 text-slate-700 min-w-[220px] w-auto">
+                <Users className="w-3.5 h-3.5 text-amber-500 mr-1.5 flex-shrink-0" />
+                <SelectValue placeholder="Select POPS user to view..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__self__" className="text-xs font-semibold text-slate-500">— View My Own Records —</SelectItem>
+                {availableUsers.map(u => {
+                  const count = userRecordCounts[u.id] || 0;
+                  return (
+                    <SelectItem key={u.id} value={u.id} className="text-xs">
+                      <div className="flex items-center justify-between gap-3 w-full">
+                        <span className="font-medium">{u.name}{u.office ? ` (${u.office})` : ''}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", count > 0 ? "bg-emerald-100 text-emerald-700 font-semibold" : "bg-slate-100 text-slate-400")}>
+                          {count > 0 ? `${count} record${count > 1 ? 's' : ''}` : 'No records'}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {selectedUserId && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedUserId('')}
+                className="h-9 text-xs border-amber-200 text-amber-700 hover:bg-amber-100"
+              >
+                ✕ Clear
+              </Button>
+            )}
+          </div>
+          {selectedUser && (
+            <Badge className="bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-semibold px-2.5 py-1 whitespace-nowrap">
+              Viewing: {viewingLabel}
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {/* ── Admin No-User-Selected Empty State ──────────────────────────── */}
+      {isAdmin && !selectedUserId && (
+        <div className="flex flex-col items-center justify-center py-24 rounded-2xl border border-dashed border-amber-200 bg-amber-50/40">
+          <div className="w-16 h-16 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-amber-500" />
+          </div>
+          <h3 className="text-base font-bold text-slate-700 mb-1">Select a POPS User to View Records</h3>
+          <p className="text-sm text-slate-500 mb-6 max-w-sm text-center">
+            Use the dropdown above to select a POPS user and view their PR / DV transaction records.
+          </p>
+          {availableUsers.length === 0 && (
+            <p className="text-xs text-amber-600 bg-amber-100 border border-amber-200 px-3 py-2 rounded-lg">
+              No POPS users found in the system.
+            </p>
+          )}
+          {availableUsers.length > 0 && (
+            <div className="flex flex-col gap-2 w-full max-w-sm">
+              {availableUsers.map(u => {
+                const count = userRecordCounts[u.id] || 0;
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setSelectedUserId(u.id)}
+                    className="flex items-center justify-between px-4 py-3 rounded-xl border border-amber-200 bg-white hover:bg-amber-50 hover:border-amber-300 transition-all text-left group shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 group-hover:bg-amber-200 transition-colors">
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-700 truncate">{u.name}</p>
+                        {u.office && <p className="text-[11px] text-slate-400 truncate">{u.office}</p>}
+                      </div>
+                    </div>
+                    <Badge className={cn("text-[10px] font-semibold ml-2 whitespace-nowrap", count > 0 ? "bg-emerald-100 text-emerald-800 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200")}>
+                      {count > 0 ? `${count} record${count > 1 ? 's' : ''}` : 'No records'}
+                    </Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Page Header + full content — only shown when admin has selected a user, or is not admin */}
+      {(!isAdmin || selectedUserId) && (<>
       <PageHeader
-        title="POPS PR / DV Transaction Tracker"
+        title={isAdmin && selectedUser ? `POPS PR / DV — ${selectedUser.name}` : 'POPS PR / DV Transaction Tracker'}
         description="Monitor Purchase Requests (PR), Obligation Requests (OBR), and Disbursement Vouchers (DV) with multi-row payee tracking."
         icon={ShieldCheck}
         actions={
@@ -1520,6 +1691,7 @@ export default function PopsTransactionPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </>)}
     </div>
   );
 }
