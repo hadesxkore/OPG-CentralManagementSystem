@@ -7,7 +7,7 @@ import {
   FileSpreadsheet, Plus, Search, Download, Trash2, Edit3, Eye,
   Sparkles, CheckCircle2, XCircle, Clock, MapPin, UserCheck, Calendar as CalendarIcon,
   CreditCard, ChevronLeft, ChevronRight, RefreshCw, FileText, AlertCircle,
-  Users, Upload, FileUp, AlertTriangle, ShieldCheck, ChevronDown
+  Users, Upload, FileUp, AlertTriangle, ShieldCheck
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -351,7 +351,7 @@ export default function TransactionEncodingPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
@@ -431,13 +431,12 @@ export default function TransactionEncodingPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
       const ownerNameClean = ownerName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
 
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Received Date): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Recorded Dates';
-      const totalAmount = filteredForPdf.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`

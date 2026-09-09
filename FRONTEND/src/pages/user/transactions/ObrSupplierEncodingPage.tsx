@@ -178,7 +178,7 @@ export default function ObrSupplierEncodingPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
@@ -260,14 +260,12 @@ export default function ObrSupplierEncodingPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
       const ownerNameClean = ownerName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
 
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Released Dates';
-      const totalObr = filteredForPdf.reduce((sum, r) => sum + (Number(r.obrAmount) || 0), 0);
-      const totalVoucher = filteredForPdf.reduce((sum, r) => sum + (Number(r.voucherAmount) || 0), 0);
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`

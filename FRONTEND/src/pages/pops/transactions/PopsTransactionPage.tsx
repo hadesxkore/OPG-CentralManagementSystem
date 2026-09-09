@@ -149,7 +149,7 @@ export default function PopsTransactionPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
@@ -231,13 +231,12 @@ export default function PopsTransactionPage() {
 
       const ownerName = selectedUser
         ? (selectedUser.name || selectedUser.username || 'User')
-        : (user?.name || user?.username || user?.email || 'User');
+        : (user?.name || user?.email || 'User');
       const ownerNameClean = ownerName.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
 
       const periodText = pdfStartDate || pdfEndDate
         ? `Date Period (Date Released): ${pdfStartDate || 'Beginning'} to ${pdfEndDate || 'Latest'}`
         : 'Date Period: All Released Dates';
-      const totalPr = filteredForPdf.reduce((sum, r) => sum + (Number(r.prAmount) || 0), 0);
 
       const headerText = selectedUser && isAdmin
         ? `${periodText}   |   Record Owner: ${ownerName}   |   Downloaded by: ${user?.name || 'Admin'}   |   Total Records: ${filteredForPdf.length}`
